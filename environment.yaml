@@ -1,0 +1,6 @@
+name: nlp_attacks
+channels:
+- defaults
+dependencies:
+  - python=3.10
+  - pip

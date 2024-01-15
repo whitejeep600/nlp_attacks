@@ -1,0 +1,49 @@
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.py$'
+exclude = '''
+/(
+  | \.git
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.poetry]
+name = "nlp_attacks"
+version = "0.0.0"
+description = ""
+authors = ["Antoni Maciag <antoni.maciag1@gmail.com>"]
+readme = "README.md"
+
+[[tool.poetry.source]]
+name = "torchcpu"
+url = "https://download.pytorch.org/whl/cpu/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.poetry.dependencies]
+python = "~3.10"
+torch = { version = "2.0.1+cpu", source = "torchcpu" }
+torchvision = { version = "0.15.2+cpu", source = "torchcpu" }
+
+black = "*"
+flake8 = "*"
+isort = "*"
+mypy = "*"
+pandas = "*"
+pyyaml = "*"
+huggingface-hub = "0.15.1"
+transformers = "*"
+sentence_transformers = "*"
+matplotlib = "*"
+nltk = "*"
+protobuf = "*"
+datasets = "*"
+textattack = "*"
