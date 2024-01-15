@@ -9,7 +9,7 @@ def main() -> None:
     for split in ['train', 'validation', 'test']:
         print(f"Downloading split {split}...\n")
         split_data = load_dataset('glue', 'sst2', split=split)
-        split_data.to_csv(target_path / split)
+        split_data.to_csv(target_path / f"{split}.csv")
     print("All downloaded.\n")
 
 

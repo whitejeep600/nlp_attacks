@@ -28,3 +28,4 @@ dmypy.json
 
 .idea/
 todo.txt
+data/*
