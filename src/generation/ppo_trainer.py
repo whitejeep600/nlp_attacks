@@ -250,7 +250,7 @@ class PPOTrainer:
         for batch in tqdm(
                 dataloader, total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
         ):
-            input_ids = batch["attacker_prompt_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
                 input_ids, self.max_len
             )
@@ -260,7 +260,7 @@ class PPOTrainer:
                 assert all_equal(
                     [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])])
 
-            original_seqs = batch["attacker_prompt"]
+            original_seqs = batch["original_seq"]
 
             with torch.no_grad():
                 rewards, stats = self.rewards_and_metrics_function(batch, batch_prefixes, original_seqs)

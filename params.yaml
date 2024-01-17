@@ -3,11 +3,11 @@ src.echo.train:
   similarity_evaluator_name: flax-sentence-embeddings/all_datasets_v4_MiniLM-L6
   value_model_name: bert-base-uncased
   train_split_path: data/sst2/train.csv
-  eval_split_path: data/sst2/eval.csv
+  eval_split_path: data/sst2/validation.csv
   max_len: 64
   batch_size: 2
   n_epochs: 4
   attacker_lr: 1e-4
   value_lr: 1e-4
-  save_path: runs/echo/run0/
+  save_dir: runs/echo/run0/
 

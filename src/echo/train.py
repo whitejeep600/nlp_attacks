@@ -128,7 +128,7 @@ def main(
 
 
 if __name__ == "__main__":
-    echo_params = yaml.safe_load(open("params.yaml"))["attacks.generative"]
+    echo_params = yaml.safe_load(open("params.yaml"))["src.echo.train"]
 
     source_model_name = echo_params["source_model_name"]
     similarity_evaluator_name = echo_params["similarity_evaluator_name"]
