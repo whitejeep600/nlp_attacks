@@ -42,8 +42,9 @@ class PPOTrainer:
         trained_model: GenerativeBart,
         rewards_and_metrics_function: Callable,
         value_model: ValueModel,
-        attacker_optimizer: Optimizer,
+        trained_model_optimizer: Optimizer,
         value_optimizer: Optimizer,
+        max_len: int,
         device: str,
         stats_save_dir: Path
     ):
@@ -54,10 +55,11 @@ class PPOTrainer:
         self.trained_model.bert.to(device)
         self.reference_model.bert.to(device)
         self.value_model = value_model
-        self.attacker_optimizer = attacker_optimizer
+        self.trained_model_optimizer = trained_model_optimizer
         self.value_optimizer = value_optimizer
+        self.max_len = max_len
         self.device = device
-        self.stats_save_dir = stats_save_dir
+        self.save_dir = stats_save_dir
         self.standard_metric_names = [
             REWARD_METRIC,
             POLICY_LOSS_METRIC,
@@ -101,7 +103,7 @@ class PPOTrainer:
     def decode_tokens_and_get_logits(
         self, batch: torch.Tensor, max_length: int
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-        self.attacker_optimizer.zero_grad()
+        self.trained_model_optimizer.zero_grad()
         batch = batch.to(self.device)
         torch.set_grad_enabled(True)
         generated_ids: list[torch.Tensor] = []
@@ -182,7 +184,7 @@ class PPOTrainer:
 
     def policy_loss_step(self, policy_loss: torch.Tensor) -> None:
         policy_loss.backward()
-        self.attacker_optimizer.step()
+        self.trained_model_optimizer.step()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
@@ -232,7 +234,6 @@ class PPOTrainer:
             self,
             dataloader: DataLoader,
             device: str,
-            common_max_length: int,
             mode: str,
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
@@ -251,7 +252,7 @@ class PPOTrainer:
         ):
             input_ids = batch["attacker_prompt_ids"].to(device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
-                input_ids, common_max_length
+                input_ids, self.max_len
             )
             batch_prefixes = self.decode_prefixes(generated_ids)
 
@@ -305,7 +306,7 @@ class PPOTrainer:
         return mean_final_reward
 
     def save_logs(self) -> None:
-        logs_path = self.stats_save_dir / "log.txt"
+        logs_path = self.save_dir / "log.txt"
         with open(logs_path, "w") as f:
             f.write(json.dumps(self.all_data, indent=4))
 
@@ -313,7 +314,7 @@ class PPOTrainer:
         time_now = time.time()
         time_elapsed = time.gmtime(time_now - self.train_start_time)
 
-        summary_path = self.stats_save_dir / "summary.txt"
+        summary_path = self.save_dir / "summary.txt"
         best_epoch_stats = {
             key: self.all_data[key][EVAL][best_epoch_no] for key in self.all_data.keys()
         }
@@ -326,7 +327,7 @@ class PPOTrainer:
             f.write(summary)
 
     def save_plots(self) -> None:
-        plots_path = self.stats_save_dir / "plots"
+        plots_path = self.save_dir / "plots"
         plots_path.mkdir(parents=True, exist_ok=True)
         for variable in self.all_data.keys():
             for mode in MODES:
@@ -336,7 +337,7 @@ class PPOTrainer:
                 plt.xlabel("iteration")
                 plt.savefig(plots_path / f"{title}.jpg")
 
-    def save_trained_model(self, path: Path) -> None:
-        torch.save(self.trained_model.bert.state_dict(), path)
+    def save_trained_model(self) -> None:
+        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "ckpt.pt")
 
 

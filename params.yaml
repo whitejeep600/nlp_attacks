@@ -9,5 +9,5 @@ src.echo.train:
   n_epochs: 4
   attacker_lr: 1e-4
   value_lr: 1e-4
-  save_path: checkpoints/echo/ckpt.pt
+  save_path: runs/echo/run0/
 

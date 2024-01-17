@@ -17,6 +17,9 @@ class GenerativeBart:
     def eval(self):
         self.bert.eval()
 
+    def parameters(self):
+        return self.bert.parameters()
+
     def generate_with_greedy_decoding(
         self, inputs: torch.Tensor, max_length: int = 20
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:

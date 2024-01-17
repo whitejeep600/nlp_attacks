@@ -36,3 +36,17 @@ class SimilarityEvaluator:
     def train(self) -> None:
         self.model.train()
 
+
+def get_similarity_scores(
+    batch_prefixes: list[list[str]],
+    original_seqs: list[str],
+    similarity_evaluator: SimilarityEvaluator,
+    device: str
+) -> list[torch.Tensor]:
+    similarity_scores = [
+        torch.Tensor(
+            similarity_evaluator.evaluate_prefixes(sample_prefixes, original_seq)
+        ).to(device)
+        for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)
+    ]
+    return similarity_scores
