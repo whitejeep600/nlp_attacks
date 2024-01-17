@@ -8,7 +8,7 @@ class ValueModel(torch.nn.Module):
         super(ValueModel, self).__init__()
         self.model = BertModel.from_pretrained(model_name)
         self.model.to(device)
-        self.linear_to_logit = Linear(max_length * 2, 1)
+        self.linear_to_logit = Linear(self.model.config.hidden_size, 1)
         self.linear_to_logit.to(device)
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -32,18 +32,18 @@ class ValueModel(torch.nn.Module):
         output = self.model(
             input_ids=torch.concatenate(
                 [
-                    tokenized_source["input_ids"].flatten(),
-                    tokenized_generated["input_ids"].flatten()
+                    tokenized_source["input_ids"],
+                    tokenized_generated["input_ids"]
                 ],
                 dim=-1
-            ),
+            ).to(self.device),
             attention_mask=torch.concatenate(
                 [
-                    tokenized_source["attention_mask"].flatten(),
-                    tokenized_generated["attention_mask"].flatten()
+                    tokenized_source["attention_mask"],
+                    tokenized_generated["attention_mask"]
                 ],
                 dim=-1
-            )
+            ).to(self.device)
         )
         pooled = output.pooler_output
 

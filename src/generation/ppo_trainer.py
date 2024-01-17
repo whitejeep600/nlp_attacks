@@ -114,20 +114,25 @@ class PPOTrainer:
                 seq.unsqueeze(0), max_length
             )
             generated_ids.append(new_ids)
-            token_probabilities.append(
-                torch.stack(
+            new_token_probabilites = torch.stack(
                     [
                         torch.softmax(scores[i][0], dim=0)[new_ids[i + 1]]
                         for i in range(len(scores))
                     ],
                 )
-            )
-            reference_probabilities.append(
-                torch.exp(
+            new_reference_probabilites = torch.exp(
                     self.reference_model.bert.compute_transition_scores(
                         new_ids.unsqueeze(0), scores, normalize_logits=True
                     ).squeeze(0)
                 )
+            if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
+                new_token_probabilites = new_token_probabilites[:-1]
+                new_reference_probabilites = new_reference_probabilites[:-1]
+            token_probabilities.append(
+                new_token_probabilites
+            )
+            reference_probabilities.append(
+                new_reference_probabilites
             )
         return generated_ids, token_probabilities, reference_probabilities
 
@@ -258,7 +263,8 @@ class PPOTrainer:
 
             for i in range(len(batch_prefixes)):
                 assert all_equal(
-                    [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])])
+                    [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])]
+                )
 
             original_seqs = batch["original_seq"]
 

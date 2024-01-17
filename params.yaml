@@ -4,8 +4,8 @@ src.echo.train:
   value_model_name: bert-base-uncased
   train_split_path: data/sst2/train.csv
   eval_split_path: data/sst2/validation.csv
-  max_len: 64
-  batch_size: 2
+  max_len: 32
+  batch_size: 1
   n_epochs: 4
   attacker_lr: 1e-4
   value_lr: 1e-4
