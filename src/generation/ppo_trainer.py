@@ -5,6 +5,7 @@ import warnings
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from numpy import mean, ceil
@@ -65,7 +66,7 @@ class PPOTrainer:
             POLICY_LOSS_METRIC,
             VALUE_LOSS_METRIC,
         ]
-        self.all_data: dict[str, dict[str, list[float]]] = {
+        self.all_data: dict[str, dict[str, list[list[float]]]] = {
             metric_name: {
                 TRAIN: [],
                 EVAL: []
@@ -207,7 +208,7 @@ class PPOTrainer:
 
     def add_epoch_metrics(
         self,
-        epoch_metrics: dict[str, float],
+        epoch_metrics: dict[str, list[float]],
         mode: str,
     ) -> None:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
@@ -227,7 +228,7 @@ class PPOTrainer:
         if mode == EVAL:
             self.epochs_elapsed += 1
 
-    def add_nonstandard_epoch_metrics(self, epoch_metrics: dict[str, float], mode: str) -> None:
+    def add_nonstandard_epoch_metrics(self, epoch_metrics: dict[str, list[float]], mode: str) -> None:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
         for metric_name in epoch_metrics.keys():
             if metric_name not in self.all_data:
@@ -264,9 +265,13 @@ class PPOTrainer:
             batch_prefixes = self.decode_prefixes(generated_ids)
 
             for i in range(len(batch_prefixes)):
-                assert all_equal(
+                if not all_equal(
                     [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])]
-                )
+                ):
+                    warnings.warn(
+                        f"Not all lengths equal, generated ids {generated_ids[i]}, token"
+                        f" probs {token_probs}, batch prefixes {batch_prefixes}"
+                    )
 
             original_seqs = batch["original_seq"]
 
@@ -299,15 +304,15 @@ class PPOTrainer:
         mean_final_reward = float(mean(epoch_rewards))
         self.add_epoch_metrics(
             {
-                REWARD_METRIC: mean_final_reward,
-                POLICY_LOSS_METRIC: float(mean(epoch_policy_losses)),
-                VALUE_LOSS_METRIC: float(mean(epoch_value_losses)),
+                REWARD_METRIC: epoch_rewards,
+                POLICY_LOSS_METRIC: epoch_policy_losses,
+                VALUE_LOSS_METRIC: epoch_value_losses,
             },
             mode
         )
         self.add_nonstandard_epoch_metrics(
             {
-                list_name: float(mean(nonstandard_metrics[list_name])) for list_name in nonstandard_metrics.lists.keys()
+                list_name: nonstandard_metrics[list_name] for list_name in nonstandard_metrics.lists.keys()
             },
             mode
         )
@@ -324,12 +329,12 @@ class PPOTrainer:
 
         summary_path = self.save_dir / "summary.txt"
         best_epoch_stats = {
-            key: self.all_data[key][EVAL][best_epoch_no] for key in self.all_data.keys()
+            key: mean(self.all_data[key][EVAL][best_epoch_no]) for key in self.all_data.keys()
         }
         summary = (
             f"Training time: {time.strftime('%H:%M:%S', time_elapsed)}"
             f" Number of epochs elapsed: {self.epochs_elapsed}, best stats (final rewards)"
-            f" for epoch {best_epoch_no}, as follows: {best_epoch_stats}"
+            f" for epoch {best_epoch_no}, as follows: {best_epoch_stats}\n"
         )
         with open(summary_path, "w") as f:
             f.write(summary)
@@ -339,13 +344,19 @@ class PPOTrainer:
         plots_path.mkdir(parents=True, exist_ok=True)
         for variable in self.all_data.keys():
             for mode in MODES:
+                plotted_data = self.all_data[variable][mode]
+                if not all([data for data in plotted_data if len(data) == len(plotted_data[0])]):
+                    warnings.warn("Some logged data had inconsistent lengths per epoch.")
+                ys = [y for epoch_data in plotted_data for y in epoch_data]
+                xs = np.linspace(0, len(plotted_data), len(ys))
                 title = f"{mode}_{variable}"
                 plt.title(title)
-                plt.plot(self.all_data[variable][mode])
+                plt.plot(xs, ys)
                 plt.xlabel("iteration")
                 plt.savefig(plots_path / f"{title}.jpg")
 
     def save_trained_model(self) -> None:
-        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "ckpt.pt")
+        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
+        torch.save(self.value_model.bert.state_dict(), self.save_dir / "value_ckpt.pt")
 
 
