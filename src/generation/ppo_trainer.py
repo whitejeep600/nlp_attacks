@@ -7,7 +7,7 @@ from typing import Callable
 
 import torch
 from matplotlib import pyplot as plt
-from numpy import mean
+from numpy import mean, ceil
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -111,7 +111,7 @@ class PPOTrainer:
         reference_probabilities: list = []
         for seq in batch:
             new_ids, scores = self.trained_model.generate_with_greedy_decoding(
-                seq.unsqueeze(0), max_length
+                seq.unsqueeze(0), max_length, min_length=ceil((len(seq.unsqueeze(0)) * 0.5))
             )
             generated_ids.append(new_ids)
             new_token_probabilites = torch.stack(
@@ -129,7 +129,7 @@ class PPOTrainer:
             if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
                 new_token_probabilites = new_token_probabilites[:-1]
                 new_reference_probabilites = new_reference_probabilites[:-1]
-                generated_ids = generated_ids[:-1]
+                generated_ids[-1] = generated_ids[-1][:-1]
             token_probabilities.append(
                 new_token_probabilites
             )
@@ -143,7 +143,7 @@ class PPOTrainer:
     ) -> list[torch.Tensor]:
         self.value_optimizer.zero_grad()
         return [
-            torch.concat(
+            torch.Tensor(
                 [self.value_model.get_value(prefix, original_seq) for prefix in sample_prefixes]
             )
             for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)
