@@ -177,7 +177,7 @@ class PPOTrainer:
                 )
                 for batch_index in range(batch_size)
             ]
-        ratios = [token_probs[i] / reference_probs[i] for i in range(batch_size)]
+        ratios = [token_probs[i][:-1] / reference_probs[i][:-1] for i in range(batch_size)]
         clipped_ratios = [torch.clip(ratio, 1 - EPSILON, 1 + EPSILON) for ratio in ratios]
         clipped_objectives = [
             torch.minimum(ratios[i] * advantages[i], clipped_ratios[i] * advantages[i])
