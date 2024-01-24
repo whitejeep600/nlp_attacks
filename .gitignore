@@ -1,4 +1,5 @@
 params.yaml
+runs/*
 
 __pycache__/
 

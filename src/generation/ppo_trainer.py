@@ -198,7 +198,7 @@ class PPOTrainer:
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
     ) -> torch.Tensor:
         value_loss = torch.mean(
-            torch.concat([values[i] - rewards[i][-1].detach() for i in range(len(values))])
+            torch.abs(torch.concat([values[i] - rewards[i][-1].detach() for i in range(len(values))]))
         )
         return value_loss
 
@@ -221,7 +221,7 @@ class PPOTrainer:
             if metric_name not in epoch_metrics:
                 warnings.warn(f"Metric '{metric_name}' was not passed for this iteration!")
         average_epoch_metrics = {
-            mean(epoch_metrics[key]) for key in epoch_metrics.keys()
+            key: mean(epoch_metrics[key]) for key in epoch_metrics.keys()
         }
         print(
             f"Epoch {self.epochs_elapsed},"
@@ -266,7 +266,6 @@ class PPOTrainer:
                 input_ids, self.max_len
             )
             batch_prefixes = self.decode_prefixes(generated_ids)
-
             for i in range(len(batch_prefixes)):
                 if not all_equal(
                     [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])]
