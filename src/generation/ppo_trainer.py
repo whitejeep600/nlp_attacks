@@ -125,9 +125,11 @@ class PPOTrainer:
                         new_ids.unsqueeze(0), scores, normalize_logits=True
                     ).squeeze(0)
                 )
+            # We don't want to include the generation logit of the EOS token.
             if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
                 new_token_probabilites = new_token_probabilites[:-1]
                 new_reference_probabilites = new_reference_probabilites[:-1]
+                generated_ids = generated_ids[:-1]
             token_probabilities.append(
                 new_token_probabilites
             )
