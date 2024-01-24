@@ -45,7 +45,7 @@ class ValueModel(torch.nn.Module):
                 dim=-1
             ).to(self.device)
         )
-        pooled = output.pooler_output
+        pooled = output.pooler_output.flatten()
 
         logit = self.linear_to_logit(
             pooled

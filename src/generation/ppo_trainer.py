@@ -143,7 +143,7 @@ class PPOTrainer:
     ) -> list[torch.Tensor]:
         self.value_optimizer.zero_grad()
         return [
-            torch.Tensor(
+            torch.cat(
                 [self.value_model.get_value(prefix, original_seq) for prefix in sample_prefixes]
             )
             for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)
