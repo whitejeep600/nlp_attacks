@@ -122,12 +122,12 @@ class PPOTrainer:
                     ],
                 )
             new_reference_probabilites = torch.exp(
-                    self.reference_model.bert.compute_transition_scores(
+                    self.reference_model.bert.module.compute_transition_scores(
                         new_ids.unsqueeze(0), scores, normalize_logits=True
                     ).squeeze(0)
                 )
             # We don't want to include the generation logit of the EOS token.
-            if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
+            if new_ids[-1] == self.trained_model.bert.module.generation_config.eos_token_id:
                 new_token_probabilites = new_token_probabilites[:-1]
                 new_reference_probabilites = new_reference_probabilites[:-1]
                 generated_ids[-1] = generated_ids[-1][:-1]
@@ -361,7 +361,7 @@ class PPOTrainer:
                 plt.clf()
 
     def save_trained_model(self) -> None:
-        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
+        torch.save(self.trained_model.bert.module.state_dict(), self.save_dir / "generator_ckpt.pt")
         torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
 
 

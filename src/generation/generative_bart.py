@@ -1,11 +1,13 @@
 import torch
+from torch.nn import DataParallel
 from transformers import BartForConditionalGeneration, BartTokenizer
 
 
 class GenerativeBart:
     def __init__(self, model_name: str, max_length: int, device: str):
         super().__init__()
-        self.bert = BartForConditionalGeneration.from_pretrained(model_name)
+        bert = BartForConditionalGeneration.from_pretrained(model_name)
+        self.bert = DataParallel(bert)
         self.bert.to(device)
         self.device = device
         self.tokenizer = BartTokenizer.from_pretrained(model_name)
@@ -30,7 +32,7 @@ class GenerativeBart:
         logits for each step.
 
         """
-        decoded = torch.Tensor([[self.bert.config.decoder_start_token_id]]).int().to(self.device)
+        decoded = torch.Tensor([[self.bert.module.config.decoder_start_token_id]]).int().to(self.device)
         scores: list[torch.Tensor] = []
         for _ in range(max_length - 1):
             next_one = self.bert(
@@ -41,7 +43,7 @@ class GenerativeBart:
             next_id = torch.argmax(new_scores, dim=-1)
             decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
             scores.append(new_scores.unsqueeze(0))
-            if next_id == self.bert.generation_config.eos_token_id:
+            if next_id == self.bert.module.generation_config.eos_token_id:
                 break
         return decoded.squeeze(0), scores
 
