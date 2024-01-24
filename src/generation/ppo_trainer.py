@@ -220,10 +220,13 @@ class PPOTrainer:
         for metric_name in self.standard_metric_names:
             if metric_name not in epoch_metrics:
                 warnings.warn(f"Metric '{metric_name}' was not passed for this iteration!")
+        average_epoch_metrics = {
+            mean(epoch_metrics[key]) for key in epoch_metrics.keys()
+        }
         print(
             f"Epoch {self.epochs_elapsed},"
             f" this epoch's {mode} stats, as follows:\n"
-            f"{epoch_metrics}\n"
+            f"{average_epoch_metrics}\n"
         )
         if mode == EVAL:
             self.epochs_elapsed += 1
@@ -272,8 +275,8 @@ class PPOTrainer:
                         f"Not all lengths equal, generated ids {generated_ids[i]}, token"
                         f" probs {token_probs}, batch prefixes {batch_prefixes}"
                     )
-                    token_probs[i] = token_probs[:len(batch_prefixes[i])]
-                    reference_probs[i] = reference_probs[:len(batch_prefixes[i])]
+                    token_probs[i] = token_probs[i][:len(batch_prefixes[i])]
+                    reference_probs[i] = reference_probs[i][:len(batch_prefixes[i])]
 
             original_seqs = batch["original_seq"]
 
@@ -356,6 +359,7 @@ class PPOTrainer:
                 plt.plot(xs, ys)
                 plt.xlabel("iteration")
                 plt.savefig(plots_path / f"{title}.jpg")
+                plt.clf()
 
     def save_trained_model(self) -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
