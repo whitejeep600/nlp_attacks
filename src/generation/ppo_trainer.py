@@ -272,6 +272,8 @@ class PPOTrainer:
                         f"Not all lengths equal, generated ids {generated_ids[i]}, token"
                         f" probs {token_probs}, batch prefixes {batch_prefixes}"
                     )
+                    token_probs[i] = token_probs[:len(batch_prefixes[i])]
+                    reference_probs[i] = reference_probs[:len(batch_prefixes[i])]
 
             original_seqs = batch["original_seq"]
 
@@ -357,6 +359,6 @@ class PPOTrainer:
 
     def save_trained_model(self) -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
-        torch.save(self.value_model.bert.state_dict(), self.save_dir / "value_ckpt.pt")
+        torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
 
 
