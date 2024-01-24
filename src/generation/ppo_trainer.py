@@ -112,7 +112,7 @@ class PPOTrainer:
         reference_probabilities: list = []
         for seq in batch:
             new_ids, scores = self.trained_model.generate_with_greedy_decoding(
-                seq.unsqueeze(0), max_length, min_length=ceil((len(seq.unsqueeze(0)) * 0.5))
+                seq.unsqueeze(0), max_length
             )
             generated_ids.append(new_ids)
             new_token_probabilites = torch.stack(
@@ -171,7 +171,7 @@ class PPOTrainer:
                         torch.sum(
                             gammas[batch_index][t:] * discount_exponents[: len(gammas[batch_index][t:])]
                         )
-                        for t in range(len(rewards[batch_index]))
+                        for t in range(len(rewards[batch_index]) - 1)
                     ],
                     dim=0
                 )

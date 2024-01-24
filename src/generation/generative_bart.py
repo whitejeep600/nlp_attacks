@@ -21,7 +21,7 @@ class GenerativeBart:
         return self.bert.parameters()
 
     def generate_with_greedy_decoding(
-        self, inputs: torch.Tensor, max_length: int = 20, min_length: int | None = None
+        self, inputs: torch.Tensor, max_length: int = 20
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """
         Return a (sequence, scores) tuple where sequence is a tensor of shape (generation_len)
@@ -39,19 +39,10 @@ class GenerativeBart:
             )
             new_scores = next_one.logits[0][-1, :]
             next_id = torch.argmax(new_scores, dim=-1)
+            decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
+            scores.append(new_scores.unsqueeze(0))
             if next_id == self.bert.generation_config.eos_token_id:
-                if min_length is None or len(decoded) >= min_length:
-                    decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)),dim=-1)
-                    scores.append(new_scores.unsqueeze(0))
-                    break
-                else:
-                    # Forcing the decoding to choose the second most likely token after EOS
-                    next_id = torch.topk(new_scores, dim=-1, k=2).indices[1]
-                    decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
-                    scores.append(new_scores.unsqueeze(0))
-            else:
-                decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
-                scores.append(new_scores.unsqueeze(0))
+                break
         return decoded.squeeze(0), scores
 
     def decode_prefixes(self, generated_ids: list[torch.Tensor]) -> list[list[str]]:
