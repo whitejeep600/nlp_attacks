@@ -8,8 +8,7 @@ from typing import Callable
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from numpy import mean, ceil
-from torch.optim import Optimizer
+from numpy import mean
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -51,8 +50,6 @@ class PPOTrainer:
         self.rewards_and_metrics_function = rewards_and_metrics_function
         self.reference_model = copy.deepcopy(self.trained_model)
         self.reference_model.eval()
-        self.trained_model.bert.to(device)
-        self.reference_model.bert.to(device)
         self.value_model = value_model
         self.max_len = max_len
         self.device = device
@@ -116,11 +113,12 @@ class PPOTrainer:
                         for i in range(len(scores))
                     ],
                 )
-            new_reference_probabilites = torch.exp(
-                    self.reference_model.bert.compute_transition_scores(
-                        new_ids.unsqueeze(0), scores, normalize_logits=True
-                    ).squeeze(0)
-                )
+            with torch.no_grad:
+                new_reference_probabilites = torch.exp(
+                        self.reference_model.bert.compute_transition_scores(
+                            new_ids.unsqueeze(0), scores, normalize_logits=True
+                        ).squeeze(0)
+                    )
             # We don't want to include the generation logit of the EOS token.
             if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
                 new_token_probabilites = new_token_probabilites[:-1]
@@ -140,7 +138,7 @@ class PPOTrainer:
         return [
             torch.cat(
                 [self.value_model.get_value(prefix, original_seq) for prefix in sample_prefixes]
-            )
+            ).to(self.device)
             for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)
         ]
 
@@ -236,7 +234,6 @@ class PPOTrainer:
     def iteration(
             self,
             dataloader: DataLoader,
-            device: str,
             mode: str,
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
@@ -253,7 +250,7 @@ class PPOTrainer:
         for batch in tqdm(
                 dataloader, total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
         ):
-            input_ids = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(self.device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
                 input_ids, self.max_len
             )

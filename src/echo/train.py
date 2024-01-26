@@ -1,6 +1,5 @@
 from functools import partial
 from pathlib import Path
-from pickle import dump
 
 import torch
 import yaml
@@ -13,7 +12,7 @@ from src.generation.generative_bart import GenerativeBart
 from src.generation.ppo_trainer import PPOTrainer, TRAIN, EVAL
 from src.generation.similarity_evaluator import SimilarityEvaluator, get_similarity_scores
 from src.generation.value_model import ValueModel
-from src.utils import get_available_torch_device
+from src.utils import get_available_torch_devices
 
 
 MEM_SNAPSHOT_SAVE_PATH = "snapshot.pickle"
@@ -54,11 +53,11 @@ def train(
 
     def echo_optimizer_hook(parameter) -> None:
         echo_optimizers[parameter].step()
-        echo_optimizers[parameter].zero_grad()
+        echo_optimizers[parameter].zero_grad(set_to_none=True)
 
     def value_optimizer_hook(parameter) -> None:
         value_optimizers[parameter].step()
-        value_optimizers[parameter].zero_grad()
+        value_optimizers[parameter].zero_grad(set_to_none=True)
 
     for p in echo.parameters():
         p.register_post_accumulate_grad_hook(echo_optimizer_hook)
@@ -84,30 +83,19 @@ def train(
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
-    try:
-        torch.cuda.memory._record_memory_history(enabled='all')
-        for i in tqdm(range(n_epochs), desc="training...", position=0):
-            ppo_trainer.iteration(train_dataloader, device, TRAIN)
-            with torch.no_grad:
-                new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
-            if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
-                best_epoch = i
-                best_mean_final_rewards = new_mean_final_rewards
-                ppo_trainer.save_trained_model()
+    for i in tqdm(range(n_epochs), desc="training...", position=0):
+        ppo_trainer.iteration(train_dataloader, TRAIN)
+        with torch.no_grad:
+            new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, EVAL)
+        if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
+            best_epoch = i
+            best_mean_final_rewards = new_mean_final_rewards
+            ppo_trainer.save_trained_model()
 
-        ppo_trainer.save_logs()
-        ppo_trainer.save_summary(best_epoch)
-        ppo_trainer.save_plots()
-    except (RuntimeError, KeyboardInterrupt) as e:
-        # This is often an OOM error
-        #if 'memory' in str(e):
-        if True:
-            print(f"Caught an error suspected to be OOM error. Saving a memory"
-                  f" snapshot to {MEM_SNAPSHOT_SAVE_PATH}\n")
-            snapshot = torch.cuda.memory._snapshot()
-            with open(MEM_SNAPSHOT_SAVE_PATH, "wb") as f:
-                dump(snapshot, f)
-        raise e
+    ppo_trainer.save_logs()
+    ppo_trainer.save_summary(best_epoch)
+    ppo_trainer.save_plots()
+
 
 
 def main(
@@ -123,10 +111,16 @@ def main(
         value_lr: float,
         save_dir: Path
 ):
-    device = get_available_torch_device()
-    similarity_evaluator = SimilarityEvaluator(similarity_evaluator_name, device)
-    value_model = ValueModel(value_model_name, max_len, device)
-    echo = GenerativeBart(source_model_name, max_len, device)
+    devices = get_available_torch_devices()
+    if len(devices) > 1:
+        trainer_device = devices[0]
+        value_device = devices[1]
+    else:
+        trainer_device = devices[0]
+        value_device = devices[0]
+    similarity_evaluator = SimilarityEvaluator(similarity_evaluator_name, trainer_device)
+    value_model = ValueModel(value_model_name, max_len, value_device)
+    echo = GenerativeBart(source_model_name, max_len, trainer_device)
     train_dataset = SST2Dataset(
         train_split_path,
         echo.tokenizer,
@@ -150,7 +144,7 @@ def main(
         n_epochs,
         attacker_lr,
         value_lr,
-        device,
+        trainer_device,
         max_len,
         save_dir,
     )

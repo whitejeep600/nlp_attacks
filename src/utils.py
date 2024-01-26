@@ -1,8 +1,11 @@
 import torch
 
 
-def get_available_torch_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
+def get_available_torch_devices() -> list[str]:
+    if torch.cuda.is_available():
+        return [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+    else:
+        return ["cpu"]
 
 
 def all_equal(values) -> bool:
