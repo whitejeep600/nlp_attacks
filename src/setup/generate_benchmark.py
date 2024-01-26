@@ -9,21 +9,19 @@ from typing import List
 from tqdm import tqdm
 
 
-def main(
-        benchmarked_models: List[str],
-        algorithms: List[str]
-):
+def main(benchmarked_models: List[str], algorithms: List[str]):
     with tqdm(
-            total= len(benchmarked_models) * len(algorithms),
-            desc='Generating benchmarks...'
+        total=len(benchmarked_models) * len(algorithms), desc="Generating benchmarks..."
     ) as pbar:
         for model_name in benchmarked_models:
             for algorithm_name in algorithms:
                 subdir = f"{model_name}/{algorithm_name}"
                 target_path = Path("data/benchmarking") / subdir / "log.csv"
                 if target_path.exists():
-                    print(f"Skipping the generation of the {subdir} benchmark, since the related"
-                          f" data was found already present.")
+                    print(
+                        f"Skipping the generation of the {subdir} benchmark, since the related"
+                        f" data was found already present."
+                    )
                     pbar.update(1)
                     continue
                 else:
@@ -41,8 +39,7 @@ def main(
                 pbar.update(1)
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     # This refers to pretrained model names accessed via the textattack package.
     # The full list of potential models for the sst2 dataset can be obtained, for
     # example, by running

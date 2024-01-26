@@ -31,27 +31,16 @@ class ValueModel(torch.nn.Module):
         )
         output = self.model(
             input_ids=torch.concatenate(
-                [
-                    tokenized_source["input_ids"],
-                    tokenized_generated["input_ids"]
-                ],
-                dim=-1
+                [tokenized_source["input_ids"], tokenized_generated["input_ids"]], dim=-1
             ).to(self.device),
             attention_mask=torch.concatenate(
-                [
-                    tokenized_source["attention_mask"],
-                    tokenized_generated["attention_mask"]
-                ],
-                dim=-1
-            ).to(self.device)
+                [tokenized_source["attention_mask"], tokenized_generated["attention_mask"]], dim=-1
+            ).to(self.device),
         )
         pooled = output.pooler_output.flatten()
 
-        logit = self.linear_to_logit(
-            pooled
-        )
+        logit = self.linear_to_logit(pooled)
         return logit
 
     def eval(self) -> None:
         self.model.eval()
-

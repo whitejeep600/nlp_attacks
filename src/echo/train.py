@@ -19,13 +19,15 @@ MEM_SNAPSHOT_SAVE_PATH = "snapshot.pickle"
 
 
 def get_rewards_and_nonstandard_metrics(
-        batch: dict,
-        batch_prefixes: list[list[str]],
-        original_seqs: list[str],
-        similarity_evaluator: SimilarityEvaluator,
-        device: str
+    batch: dict,
+    batch_prefixes: list[list[str]],
+    original_seqs: list[str],
+    similarity_evaluator: SimilarityEvaluator,
+    device: str,
 ) -> tuple[list[torch.Tensor], dict[str, float]]:
-    similarity_scores = get_similarity_scores(batch_prefixes, original_seqs, similarity_evaluator, device)
+    similarity_scores = get_similarity_scores(
+        batch_prefixes, original_seqs, similarity_evaluator, device
+    )
 
     stats = {
         "similarity_scores": float(torch.mean(torch.concat(similarity_scores, dim=0)).item()),
@@ -34,17 +36,17 @@ def get_rewards_and_nonstandard_metrics(
 
 
 def train(
-        echo: GenerativeBart,
-        similarity_evaluator: SimilarityEvaluator,
-        value_model: ValueModel,
-        train_dataloader: DataLoader,
-        eval_dataloader: DataLoader,
-        n_epochs: int,
-        attacker_lr: float,
-        value_lr: float,
-        device: str,
-        max_len: int,
-        save_dir: Path
+    echo: GenerativeBart,
+    similarity_evaluator: SimilarityEvaluator,
+    value_model: ValueModel,
+    train_dataloader: DataLoader,
+    eval_dataloader: DataLoader,
+    n_epochs: int,
+    attacker_lr: float,
+    value_lr: float,
+    device: str,
+    max_len: int,
+    save_dir: Path,
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,22 +72,15 @@ def train(
     reward_function = partial(
         get_rewards_and_nonstandard_metrics,
         similarity_evaluator=similarity_evaluator,
-        device=device
+        device=device,
     )
-    ppo_trainer = PPOTrainer(
-        echo,
-        reward_function,
-        value_model,
-        max_len,
-        device,
-        save_dir
-    )
+    ppo_trainer = PPOTrainer(echo, reward_function, value_model, max_len, device, save_dir)
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
     for i in tqdm(range(n_epochs), desc="training...", position=0):
         ppo_trainer.iteration(train_dataloader, TRAIN)
-        with torch.no_grad:
+        with torch.no_grad():
             new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, EVAL)
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
             best_epoch = i
@@ -97,19 +92,18 @@ def train(
     ppo_trainer.save_plots()
 
 
-
 def main(
-        source_model_name: str,
-        similarity_evaluator_name: str,
-        value_model_name: str,
-        train_split_path: Path,
-        eval_split_path: Path,
-        max_len: int,
-        batch_size: int,
-        n_epochs: int,
-        attacker_lr: float,
-        value_lr: float,
-        save_dir: Path
+    source_model_name: str,
+    similarity_evaluator_name: str,
+    value_model_name: str,
+    train_split_path: Path,
+    eval_split_path: Path,
+    max_len: int,
+    batch_size: int,
+    n_epochs: int,
+    attacker_lr: float,
+    value_lr: float,
+    save_dir: Path,
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:

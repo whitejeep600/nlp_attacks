@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from numpy import mean
@@ -44,7 +45,7 @@ class PPOTrainer:
         value_model: ValueModel,
         max_len: int,
         device: str,
-        stats_save_dir: Path
+        stats_save_dir: Path,
     ):
         self.trained_model = trained_model
         self.rewards_and_metrics_function = rewards_and_metrics_function
@@ -60,14 +61,10 @@ class PPOTrainer:
             VALUE_LOSS_METRIC,
         ]
         self.all_data: dict[str, dict[str, list[list[float]]]] = {
-            metric_name: {
-                TRAIN: [],
-                EVAL: []
-            }
-            for metric_name in self.standard_metric_names
+            metric_name: {TRAIN: [], EVAL: []} for metric_name in self.standard_metric_names
         }
         self.train_start_time = time.time()
-        self.epochs_elapsed = 0
+        self.epochs_elapsed = -1
 
     def train(self) -> None:
         self.trained_model.train()
@@ -110,28 +107,21 @@ class PPOTrainer:
             scores = [score.to(self.device) for score in scores]
             generated_ids.append(new_ids)
             new_token_probabilites = torch.stack(
-                    [
-                        torch.softmax(scores[i][0], dim=0)[new_ids[i + 1]]
-                        for i in range(len(scores))
-                    ],
-                )
+                [torch.softmax(scores[i][0], dim=0)[new_ids[i + 1]] for i in range(len(scores))],
+            )
             with torch.no_grad():
                 new_reference_probabilites = torch.exp(
-                        self.reference_model.bert.compute_transition_scores(
-                            new_ids.unsqueeze(0), scores, normalize_logits=True
-                        ).squeeze(0)
-                    )
+                    self.reference_model.bert.compute_transition_scores(
+                        new_ids.unsqueeze(0), scores, normalize_logits=True
+                    ).squeeze(0)
+                )
             # We don't want to include the generation logit of the EOS token.
             if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
                 new_token_probabilites = new_token_probabilites[:-1]
                 new_reference_probabilites = new_reference_probabilites[:-1]
                 generated_ids[-1] = generated_ids[-1][:-1]
-            token_probabilities.append(
-                new_token_probabilites
-            )
-            reference_probabilities.append(
-                new_reference_probabilites
-            )
+            token_probabilities.append(new_token_probabilites)
+            reference_probabilities.append(new_reference_probabilites)
         return generated_ids, token_probabilities, reference_probabilities
 
     def get_value_function_scores(
@@ -153,7 +143,9 @@ class PPOTrainer:
     ) -> list[torch.Tensor]:
         max_generated_length = max([len(reward_tensor) for reward_tensor in rewards])
         with torch.no_grad():
-            discount_exponents = torch.pow(GAMMA * LAMBDA, torch.arange(max_generated_length)).to(self.device)
+            discount_exponents = torch.pow(GAMMA * LAMBDA, torch.arange(max_generated_length)).to(
+                self.device
+            )
             # Following the notation and equations from Schulman et al.
             batch_size = len(rewards)
             gammas = [
@@ -163,11 +155,12 @@ class PPOTrainer:
                 torch.stack(
                     [
                         torch.sum(
-                            gammas[batch_index][t:] * discount_exponents[: len(gammas[batch_index][t:])]
+                            gammas[batch_index][t:]
+                            * discount_exponents[: len(gammas[batch_index][t:])]
                         )
                         for t in range(len(rewards[batch_index]) - 1)
                     ],
-                    dim=0
+                    dim=0,
                 )
                 for batch_index in range(batch_size)
             ]
@@ -191,7 +184,9 @@ class PPOTrainer:
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
     ) -> torch.Tensor:
         value_loss = torch.mean(
-            torch.abs(torch.concat([values[i] - rewards[i][-1].detach() for i in range(len(values))]))
+            torch.abs(
+                torch.concat([values[i] - rewards[i][-1].detach() for i in range(len(values))])
+            )
         )
         return value_loss
 
@@ -212,9 +207,7 @@ class PPOTrainer:
         for metric_name in self.standard_metric_names:
             if metric_name not in epoch_metrics:
                 warnings.warn(f"Metric '{metric_name}' was not passed for this iteration!")
-        average_epoch_metrics = {
-            key: mean(epoch_metrics[key]) for key in epoch_metrics.keys()
-        }
+        average_epoch_metrics = {key: mean(epoch_metrics[key]) for key in epoch_metrics.keys()}
         print(
             f"Epoch {self.epochs_elapsed},"
             f" this epoch's {mode} stats, as follows:\n"
@@ -223,26 +216,27 @@ class PPOTrainer:
         if mode == EVAL:
             self.epochs_elapsed += 1
 
-    def add_nonstandard_epoch_metrics(self, epoch_metrics: dict[str, list[float]], mode: str) -> None:
+    def add_nonstandard_epoch_metrics(
+        self, epoch_metrics: dict[str, list[float]], mode: str
+    ) -> None:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
         for metric_name in epoch_metrics.keys():
             if metric_name not in self.all_data:
-                self.all_data[metric_name] = {
-                    TRAIN: [],
-                    EVAL: []
-                }
+                self.all_data[metric_name] = {TRAIN: [], EVAL: []}
             self.all_data[metric_name][mode].append(epoch_metrics[metric_name])
 
     def iteration(
-            self,
-            dataloader: DataLoader,
-            mode: str,
+        self,
+        dataloader: DataLoader,
+        mode: str,
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
 
         self.initialize_iteration(mode)
         if mode == TRAIN:
             self.freeze_reference_model()
+        all_original_seqs: list[str] = []
+        all_generated_sentences: list[str] = []
 
         epoch_policy_losses: list[float] = []
         epoch_value_losses: list[float] = []
@@ -250,7 +244,7 @@ class PPOTrainer:
         nonstandard_metrics = ListDict()
 
         for batch in tqdm(
-                dataloader, total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
+            dataloader, total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
         ):
             input_ids = batch["input_ids"].to(self.device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
@@ -265,13 +259,15 @@ class PPOTrainer:
                         f"Not all lengths equal, generated ids {generated_ids[i]}, token"
                         f" probs {token_probs}, batch prefixes {batch_prefixes}"
                     )
-                    token_probs[i] = token_probs[i][:len(batch_prefixes[i])]
-                    reference_probs[i] = reference_probs[i][:len(batch_prefixes[i])]
+                    token_probs[i] = token_probs[i][: len(batch_prefixes[i])]
+                    reference_probs[i] = reference_probs[i][: len(batch_prefixes[i])]
 
             original_seqs = batch["original_seq"]
 
             with torch.no_grad():
-                rewards, stats = self.rewards_and_metrics_function(batch, batch_prefixes, original_seqs)
+                rewards, stats = self.rewards_and_metrics_function(
+                    batch, batch_prefixes, original_seqs
+                )
 
             for stat_name in stats.keys():
                 nonstandard_metrics.append(stat_name, stats[stat_name])
@@ -295,6 +291,9 @@ class PPOTrainer:
             final_rewards = [reward[-1].item() for reward in rewards]
 
             epoch_rewards.append(float(mean(final_rewards)))
+            if mode == EVAL:
+                all_original_seqs += original_seqs
+                all_generated_sentences += [prefixes[-1] for prefixes in batch_prefixes]
 
         mean_final_reward = float(mean(epoch_rewards))
         self.add_epoch_metrics(
@@ -303,14 +302,18 @@ class PPOTrainer:
                 POLICY_LOSS_METRIC: epoch_policy_losses,
                 VALUE_LOSS_METRIC: epoch_value_losses,
             },
-            mode
+            mode,
         )
         self.add_nonstandard_epoch_metrics(
             {
-                list_name: nonstandard_metrics[list_name] for list_name in nonstandard_metrics.lists.keys()
+                list_name: nonstandard_metrics[list_name]
+                for list_name in nonstandard_metrics.lists.keys()
             },
-            mode
+            mode,
         )
+        if mode == EVAL:
+            self.save_generated_eval_sentences(all_original_seqs, all_generated_sentences)
+
         return mean_final_reward
 
     def save_logs(self) -> None:
@@ -355,4 +358,11 @@ class PPOTrainer:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
         torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
 
-
+    def save_generated_eval_sentences(
+        self, generated_sentences: list[str], original_sentences: list[str]
+    ) -> None:
+        generated_sentences_path = self.save_dir / "generated_sentences"
+        generated_sentences_path.mkdir(parents=True, exist_ok=True)
+        current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
+        df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
+        df.to_csv(current_save_path)

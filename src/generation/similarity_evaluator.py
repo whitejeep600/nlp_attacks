@@ -22,8 +22,7 @@ class SimilarityEvaluator:
     def evaluate_prefixes(self, prefixes: list[str], text: str) -> list[float]:
         whole_reference_encoding = self.model.encode(text, convert_to_tensor=True)
         prefix_encodings = [
-            self.model.encode(prefix, convert_to_tensor=True)
-            for prefix in prefixes
+            self.model.encode(prefix, convert_to_tensor=True) for prefix in prefixes
         ]
         return [
             torch.cosine_similarity(whole_reference_encoding, prefix_encoding, dim=0).item()
@@ -41,12 +40,12 @@ def get_similarity_scores(
     batch_prefixes: list[list[str]],
     original_seqs: list[str],
     similarity_evaluator: SimilarityEvaluator,
-    device: str
+    device: str,
 ) -> list[torch.Tensor]:
     similarity_scores = [
-        torch.Tensor(
-            similarity_evaluator.evaluate_prefixes(sample_prefixes, original_seq)
-        ).to(device)
+        torch.Tensor(similarity_evaluator.evaluate_prefixes(sample_prefixes, original_seq)).to(
+            device
+        )
         for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)
     ]
     return similarity_scores
