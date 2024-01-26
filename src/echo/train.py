@@ -68,17 +68,21 @@ def train(
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
-    for i in tqdm(range(n_epochs), desc="training...", position=0):
-        ppo_trainer.iteration(train_dataloader, device, TRAIN)
-        new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
-        if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
-            best_epoch = i
-            best_mean_final_rewards = new_mean_final_rewards
-            ppo_trainer.save_trained_model()
+    try:
+        for i in tqdm(range(n_epochs), desc="training...", position=0):
+            ppo_trainer.iteration(train_dataloader, device, TRAIN)
+            new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
+            if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
+                best_epoch = i
+                best_mean_final_rewards = new_mean_final_rewards
+                ppo_trainer.save_trained_model()
 
-    ppo_trainer.save_logs()
-    ppo_trainer.save_summary(best_epoch)
-    ppo_trainer.save_plots()
+        ppo_trainer.save_logs()
+        ppo_trainer.save_summary(best_epoch)
+        ppo_trainer.save_plots()
+    except RuntimeError as e:
+        print("dupa")
+        raise e
 
 
 def main(
