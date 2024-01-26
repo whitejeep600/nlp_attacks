@@ -7,7 +7,7 @@ src.echo.train:
   max_len: 16
   batch_size: 1
   n_epochs: 4
-  attacker_lr: 1e-4
+  attacker_lr: 1e-5
   value_lr: 1e-4
   save_dir: runs/echo/run0/
 

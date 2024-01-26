@@ -359,7 +359,7 @@ class PPOTrainer:
         torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
 
     def save_generated_eval_sentences(
-        self, generated_sentences: list[str], original_sentences: list[str]
+        self, original_sentences: list[str], generated_sentences: list[str]
     ) -> None:
         generated_sentences_path = self.save_dir / "generated_sentences"
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
