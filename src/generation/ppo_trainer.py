@@ -43,7 +43,6 @@ class PPOTrainer:
         trained_model: GenerativeBart,
         rewards_and_metrics_function: Callable,
         value_model: ValueModel,
-        value_optimizer: Optimizer,
         max_len: int,
         device: str,
         stats_save_dir: Path
@@ -55,7 +54,6 @@ class PPOTrainer:
         self.trained_model.bert.to(device)
         self.reference_model.bert.to(device)
         self.value_model = value_model
-        self.value_optimizer = value_optimizer
         self.max_len = max_len
         self.device = device
         self.save_dir = stats_save_dir
@@ -199,8 +197,6 @@ class PPOTrainer:
 
     def value_loss_step(self, value_loss: torch.Tensor) -> None:
         value_loss.backward(retain_graph=True)
-        self.value_optimizer.step()
-        self.value_optimizer.zero_grad()
 
     def add_epoch_metrics(
         self,

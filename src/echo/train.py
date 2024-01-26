@@ -49,18 +49,22 @@ def train(
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    optimizer_dict = {p: AdamW([p], foreach=False, lr=attacker_lr) for p in echo.parameters()}
+    echo_optimizers = {p: AdamW([p], foreach=False, lr=attacker_lr) for p in echo.parameters()}
+    value_optimizers = {p: AdamW([p], foreach=False, lr=value_lr) for p in value_model.parameters()}
 
-    # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
-    def optimizer_hook(parameter) -> None:
-        optimizer_dict[parameter].step()
-        optimizer_dict[parameter].zero_grad()
+    def echo_optimizer_hook(parameter) -> None:
+        echo_optimizers[parameter].step()
+        echo_optimizers[parameter].zero_grad()
 
-    # Register the hook onto every parameter
+    def value_optimizer_hook(parameter) -> None:
+        value_optimizers[parameter].step()
+        value_optimizers[parameter].zero_grad()
+
     for p in echo.parameters():
-        p.register_post_accumulate_grad_hook(optimizer_hook)
+        p.register_post_accumulate_grad_hook(echo_optimizer_hook)
 
-    value_optimizer = AdamW(value_model.parameters(), lr=value_lr)
+    for p in value_model.parameters():
+        p.register_post_accumulate_grad_hook(value_optimizer_hook)
 
     similarity_evaluator.eval()
 
@@ -73,7 +77,6 @@ def train(
         echo,
         reward_function,
         value_model,
-        value_optimizer,
         max_len,
         device,
         save_dir
@@ -85,7 +88,8 @@ def train(
         torch.cuda.memory._record_memory_history(enabled='all')
         for i in tqdm(range(n_epochs), desc="training...", position=0):
             ppo_trainer.iteration(train_dataloader, device, TRAIN)
-            new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
+            with torch.no_grad:
+                new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
             if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
                 best_epoch = i
                 best_mean_final_rewards = new_mean_final_rewards
@@ -94,7 +98,7 @@ def train(
         ppo_trainer.save_logs()
         ppo_trainer.save_summary(best_epoch)
         ppo_trainer.save_plots()
-    except RuntimeError as e:
+    except (RuntimeError, KeyboardInterrupt) as e:
         # This is often an OOM error
         #if 'memory' in str(e):
         if True:
