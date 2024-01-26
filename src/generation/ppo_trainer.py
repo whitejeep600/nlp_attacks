@@ -213,8 +213,6 @@ class PPOTrainer:
             f" this epoch's {mode} stats, as follows:\n"
             f"{average_epoch_metrics}\n"
         )
-        if mode == EVAL:
-            self.epochs_elapsed += 1
 
     def add_nonstandard_epoch_metrics(
         self, epoch_metrics: dict[str, list[float]], mode: str
