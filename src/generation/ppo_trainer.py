@@ -104,7 +104,6 @@ class PPOTrainer:
     def decode_tokens_and_get_logits(
         self, batch: torch.Tensor, max_length: int
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-        self.trained_model_optimizer.zero_grad()
         batch = batch.to(self.device)
         torch.set_grad_enabled(True)
         generated_ids: list[torch.Tensor] = []
@@ -142,7 +141,6 @@ class PPOTrainer:
     def get_value_function_scores(
         self, batch_prefixes: list[list[str]], original_seqs: list[str]
     ) -> list[torch.Tensor]:
-        self.value_optimizer.zero_grad()
         return [
             torch.cat(
                 [self.value_model.get_value(prefix, original_seq) for prefix in sample_prefixes]
@@ -193,6 +191,7 @@ class PPOTrainer:
     def policy_loss_step(self, policy_loss: torch.Tensor) -> None:
         policy_loss.backward()
         self.trained_model_optimizer.step()
+        self.trained_model_optimizer.zero_grad()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
@@ -205,6 +204,7 @@ class PPOTrainer:
     def value_loss_step(self, value_loss: torch.Tensor) -> None:
         value_loss.backward(retain_graph=True)
         self.value_optimizer.step()
+        self.value_optimizer.zero_grad()
 
     def add_epoch_metrics(
         self,
