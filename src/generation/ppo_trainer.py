@@ -106,6 +106,8 @@ class PPOTrainer:
             new_ids, scores = self.trained_model.generate_with_greedy_decoding(
                 seq.unsqueeze(0), max_length
             )
+            new_ids = new_ids.to(self.device)
+            scores = [score.to(self.device) for score in scores]
             generated_ids.append(new_ids)
             new_token_probabilites = torch.stack(
                     [
@@ -113,7 +115,7 @@ class PPOTrainer:
                         for i in range(len(scores))
                     ],
                 )
-            with torch.no_grad:
+            with torch.no_grad():
                 new_reference_probabilites = torch.exp(
                         self.reference_model.bert.compute_transition_scores(
                             new_ids.unsqueeze(0), scores, normalize_logits=True

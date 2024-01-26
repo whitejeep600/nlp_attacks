@@ -30,6 +30,7 @@ class GenerativeBart:
         logits for each step.
 
         """
+        inputs = inputs.to(self.device)
         decoded = torch.Tensor([[self.bert.config.decoder_start_token_id]]).int().to(self.device)
         scores: list[torch.Tensor] = []
         for _ in range(max_length - 1):
