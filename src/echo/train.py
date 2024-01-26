@@ -1,5 +1,6 @@
 from functools import partial
 from pathlib import Path
+from pickle import dump
 
 import torch
 import yaml
@@ -13,6 +14,9 @@ from src.generation.ppo_trainer import PPOTrainer, TRAIN, EVAL
 from src.generation.similarity_evaluator import SimilarityEvaluator, get_similarity_scores
 from src.generation.value_model import ValueModel
 from src.utils import get_available_torch_device
+
+
+MEM_SNAPSHOT_SAVE_PATH = "snapshot.pickle"
 
 
 def get_rewards_and_nonstandard_metrics(
@@ -69,6 +73,7 @@ def train(
     best_epoch = -1
 
     try:
+        torch.cuda.memory._record_memory_history(enabled='all')
         for i in tqdm(range(n_epochs), desc="training...", position=0):
             ppo_trainer.iteration(train_dataloader, device, TRAIN)
             new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, device, EVAL)
@@ -81,7 +86,13 @@ def train(
         ppo_trainer.save_summary(best_epoch)
         ppo_trainer.save_plots()
     except RuntimeError as e:
-        print("dupa")
+        # This is often an OOM error
+        if 'memory' in str(e):
+            print(f"Caught an error suspected to be OOM error. Saving a memory"
+                  f" snapshot to {MEM_SNAPSHOT_SAVE_PATH}\n")
+            snapshot = torch.cuda.memory._snapshot()
+            with open(MEM_SNAPSHOT_SAVE_PATH, "wb") as f:
+                dump(snapshot, f)
         raise e
 
 
