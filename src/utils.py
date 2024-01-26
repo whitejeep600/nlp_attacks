@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 
@@ -17,10 +19,10 @@ class ListDict:
     def __init__(self):
         self.lists: dict[str, list] = {}
 
-    def append(self, list_name: str, item):
+    def append(self, list_name: str, item: Any) -> None:
         if list_name not in self.lists.keys():
             self.lists[list_name] = []
         self.lists[list_name].append(item)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> Any:
         return self.lists[item]

@@ -42,5 +42,5 @@ class ValueModel(torch.nn.Module):
         logit = self.linear_to_logit(pooled)
         return logit
 
-    def eval(self) -> None:
-        self.model.eval()
+    def eval(self):
+        return self.model.eval()
