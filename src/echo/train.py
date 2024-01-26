@@ -49,7 +49,17 @@ def train(
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
+    optimizer_dict = {p: AdamW([p], foreach=False, lr=attacker_lr) for p in echo.parameters()}
+
+    # Define our hook, which will call the optimizer ``step()`` and ``zero_grad()``
+    def optimizer_hook(parameter) -> None:
+        optimizer_dict[parameter].step()
+        optimizer_dict[parameter].zero_grad()
+
+    # Register the hook onto every parameter
+    for p in echo.parameters():
+        p.register_post_accumulate_grad_hook(optimizer_hook)
+
     value_optimizer = AdamW(value_model.parameters(), lr=value_lr)
 
     similarity_evaluator.eval()
@@ -63,7 +73,6 @@ def train(
         echo,
         reward_function,
         value_model,
-        echo_optimizer,
         value_optimizer,
         max_len,
         device,
@@ -87,7 +96,8 @@ def train(
         ppo_trainer.save_plots()
     except RuntimeError as e:
         # This is often an OOM error
-        if 'memory' in str(e):
+        #if 'memory' in str(e):
+        if True:
             print(f"Caught an error suspected to be OOM error. Saving a memory"
                   f" snapshot to {MEM_SNAPSHOT_SAVE_PATH}\n")
             snapshot = torch.cuda.memory._snapshot()

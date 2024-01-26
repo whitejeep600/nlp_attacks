@@ -43,7 +43,6 @@ class PPOTrainer:
         trained_model: GenerativeBart,
         rewards_and_metrics_function: Callable,
         value_model: ValueModel,
-        trained_model_optimizer: Optimizer,
         value_optimizer: Optimizer,
         max_len: int,
         device: str,
@@ -56,7 +55,6 @@ class PPOTrainer:
         self.trained_model.bert.to(device)
         self.reference_model.bert.to(device)
         self.value_model = value_model
-        self.trained_model_optimizer = trained_model_optimizer
         self.value_optimizer = value_optimizer
         self.max_len = max_len
         self.device = device
@@ -190,8 +188,6 @@ class PPOTrainer:
 
     def policy_loss_step(self, policy_loss: torch.Tensor) -> None:
         policy_loss.backward()
-        self.trained_model_optimizer.step()
-        self.trained_model_optimizer.zero_grad()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
