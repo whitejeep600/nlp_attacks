@@ -175,10 +175,13 @@ class PPOTrainer:
         policy_loss = -1 * torch.mean(torch.concat(clipped_objectives))
         return policy_loss
 
-    def policy_loss_step(self, policy_loss: torch.Tensor) -> None:
-        self.trained_model_optimizer.zero_grad()
-        policy_loss.backward()
-        self.trained_model_optimizer.step()
+    def policy_loss_backprop(self, policy_loss: torch.Tensor, step: bool = False) -> None:
+        if step:
+            self.trained_model_optimizer.zero_grad()
+            policy_loss.backward()
+            self.trained_model_optimizer.step()
+        else:
+            policy_loss.backward()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
@@ -190,10 +193,13 @@ class PPOTrainer:
         )
         return value_loss
 
-    def value_loss_step(self, value_loss: torch.Tensor) -> None:
-        self.value_model_optimizer.zero_grad()
-        value_loss.backward(retain_graph=True)
-        self.value_model_optimizer.step()
+    def value_loss_backprop(self, value_loss: torch.Tensor, step: bool = False) -> None:
+        if step:
+            self.value_model_optimizer.zero_grad()
+            value_loss.backward(retain_graph=True)
+            self.value_model_optimizer.step()
+        else:
+            value_loss.backward(retain_graph=True)
 
     def add_epoch_metrics(
         self,
@@ -366,8 +372,9 @@ class PPOTrainer:
             value_loss = self.get_value_loss(rewards, values)
 
             if mode == TRAIN:
-                self.policy_loss_step(policy_loss)
-                self.value_loss_step(value_loss)
+                step = batch_no % 4 == 0
+                self.policy_loss_backprop(policy_loss, step)
+                self.value_loss_backprop(value_loss, step)
 
             epoch_policy_losses.append(policy_loss.item())
             epoch_value_losses.append(value_loss.item())
@@ -404,3 +411,10 @@ class PPOTrainer:
 
     def conclude_epoch(self) -> None:
         self.epochs_elapsed += 1
+
+    def save_stuff(self, best_epoch_no: int) -> None:
+        print(f"Saving stuff to {self.save_dir}")
+        self.save_logs()
+        self.save_summary(best_epoch_no)
+        self.save_plots()
+

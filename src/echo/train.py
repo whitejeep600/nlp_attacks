@@ -78,9 +78,7 @@ def train(
             best_mean_final_rewards = new_mean_final_rewards
             ppo_trainer.save_trained_model()
 
-    ppo_trainer.save_logs()
-    ppo_trainer.save_summary(best_epoch)
-    ppo_trainer.save_plots()
+    ppo_trainer.save_stuff(best_epoch)
 
 
 def main(
