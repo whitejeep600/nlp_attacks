@@ -56,17 +56,11 @@ class GenerativeBart:
         results: list[list[str]] = []
         for sequence_ind in range(len(generated_ids)):
             results.append([])
-            previous_decoded_length = -1
-            for prefix_length in range(len(generated_ids[sequence_ind])):
+            for prefix_length in range(2, len(generated_ids[sequence_ind]) + 1):
                 prefix = self.tokenizer.batch_decode(
-                    [generated_ids[sequence_ind][: prefix_length + 1]], skip_special_tokens=True
+                    [generated_ids[sequence_ind][:prefix_length]], skip_special_tokens=True
                 )[0]
-                if len(prefix) == previous_decoded_length:
-                    results[-1].append(prefix)
-                    break
-                if len(prefix) != 0:
-                    previous_decoded_length = len(prefix)
-                    results[-1].append(prefix)
+                results[-1].append(prefix)
         return results
 
     # Debugging utils

@@ -294,11 +294,7 @@ class PPOTrainer:
             reference_probs: list[torch.Tensor]
     ) -> None:
         for sample_no in range(len(batch_prefixes)):
-            if generated_ids[sample_no][-1] == self.trained_model.bert.generation_config.eos_token_id:
-                expected_prefixes_len = len(generated_ids[sample_no]) - 2
-            else:
-                expected_prefixes_len = len(generated_ids[sample_no]) - 1
-            if not expected_prefixes_len == len(batch_prefixes[sample_no]):
+            if not len(generated_ids[sample_no]) - 1 == len(batch_prefixes[sample_no]):
                 warnings.warn(
                     f"Unexpected generation length, generated ids {generated_ids[sample_no]}, "
                     f" batch prefixes {batch_prefixes}"
