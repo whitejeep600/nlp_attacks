@@ -165,7 +165,7 @@ if __name__ == "__main__":
     n_epochs = int(echo_params["n_epochs"])
     attacker_lr = float(echo_params["attacker_lr"])
     value_lr = float(echo_params["value_lr"])
-    n_max_train_batches: int | None = echo_params["value_lr"]
+    n_max_train_batches: int | None = echo_params["n_max_train_batches"]
 
     save_dir = Path(echo_params["save_dir"])
 
