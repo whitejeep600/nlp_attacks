@@ -1,3 +1,5 @@
+checkpoints/*
+src/playground.py
 params.yaml
 runs/*
 

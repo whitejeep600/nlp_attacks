@@ -10,4 +10,5 @@ src.echo.train:
   attacker_lr: 1e-5
   value_lr: 1e-4
   save_dir: runs/echo/run0/
+  n_max_train_batches: 1024
 

@@ -110,16 +110,17 @@ class PPOTrainer:
                 [torch.softmax(scores[i][0], dim=0)[new_ids[i + 1]] for i in range(len(scores))],
             )
             with torch.no_grad():
-                new_reference_probabilites = torch.exp(
-                    self.reference_model.bert.compute_transition_scores(
-                        new_ids.unsqueeze(0), scores, normalize_logits=True
-                    ).squeeze(0)
-                )
+                new_reference_probabilites = self.reference_model.get_reference_probabilities(
+                        seq, new_ids,
+                    )
+
             # We don't want to include the generation logit of the EOS token.
-            if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
-                new_token_probabilites = new_token_probabilites[:-1]
-                new_reference_probabilites = new_reference_probabilites[:-1]
-                generated_ids[-1] = generated_ids[-1][:-1]
+            #   edit: don't we lol
+            # if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
+            #     new_token_probabilites = new_token_probabilites[:-1]
+            #     new_reference_probabilites = new_reference_probabilites[:-1]
+            #     generated_ids[-1] = generated_ids[-1][:-1]
+
             token_probabilities.append(new_token_probabilites)
             reference_probabilities.append(new_reference_probabilites)
         return generated_ids, token_probabilities, reference_probabilities
@@ -201,7 +202,11 @@ class PPOTrainer:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
         for metric_name in epoch_metrics.keys():
             if metric_name in self.standard_metric_names:
-                self.all_data[metric_name][mode].append(epoch_metrics[metric_name])
+                if mode == EVAL:
+                    new_metrics = mean(epoch_metrics[metric_name])
+                else:
+                    new_metrics = epoch_metrics[metric_name]
+                self.all_data[metric_name][mode].append(new_metrics)
             else:
                 warnings.warn(f"Metric '{metric_name}' is not standard, ignoring.")
         for metric_name in self.standard_metric_names:
@@ -221,12 +226,70 @@ class PPOTrainer:
         for metric_name in epoch_metrics.keys():
             if metric_name not in self.all_data:
                 self.all_data[metric_name] = {TRAIN: [], EVAL: []}
-            self.all_data[metric_name][mode].append(epoch_metrics[metric_name])
+            # For eval iterations, we are not interested in how the metrics change within
+            # one iteration, because they don't include changing the model's parameters.
+            if mode == EVAL:
+                new_metrics = mean(epoch_metrics[metric_name])
+            else:
+                new_metrics = epoch_metrics[metric_name]
+            self.all_data[metric_name][mode].append(new_metrics)
+
+    def save_logs(self) -> None:
+        logs_path = self.save_dir / "log.txt"
+        with open(logs_path, "w") as f:
+            f.write(json.dumps(self.all_data, indent=4))
+
+    def save_summary(self, best_epoch_no: int) -> None:
+        time_now = time.time()
+        time_elapsed = time.gmtime(time_now - self.train_start_time)
+
+        summary_path = self.save_dir / "summary.txt"
+        best_epoch_stats = {
+            key: mean(self.all_data[key][EVAL][best_epoch_no]) for key in self.all_data.keys()
+        }
+        summary = (
+            f"Training time: {time.strftime('%H:%M:%S', time_elapsed)}"
+            f" Number of epochs elapsed: {self.epochs_elapsed}, best stats (final rewards)"
+            f" for epoch {best_epoch_no}, as follows: {best_epoch_stats}\n"
+        )
+        with open(summary_path, "w") as f:
+            f.write(summary)
+
+    def save_plots(self) -> None:
+        plots_path = self.save_dir / "plots"
+        plots_path.mkdir(parents=True, exist_ok=True)
+        for variable in self.all_data.keys():
+            for mode in MODES:
+                plotted_data = self.all_data[variable][mode]
+                if not all([data for data in plotted_data if len(data) == len(plotted_data[0])]):
+                    warnings.warn("Some logged data had inconsistent lengths per epoch.")
+                ys = [y for epoch_data in plotted_data for y in epoch_data]
+                xs = np.linspace(0, len(plotted_data), len(ys))
+                title = f"{mode}_{variable}"
+                plt.title(title)
+                plt.plot(xs, ys, linewidth=0.5)
+                plt.xlabel("iteration")
+                plt.savefig(plots_path / f"{title}.jpg", dpi=256)
+                plt.clf()
+
+    def save_trained_model(self) -> None:
+        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
+        torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
+
+    def save_generated_eval_sentences(
+        self, original_sentences: list[str], generated_sentences: list[str]
+    ) -> None:
+        generated_sentences_path = self.save_dir / "generated_sentences"
+        generated_sentences_path.mkdir(parents=True, exist_ok=True)
+        current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
+        df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
+        df.to_csv(current_save_path)
 
     def iteration(
         self,
         dataloader: DataLoader,
         mode: str,
+        n_max_batches: int | None = None
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
 
@@ -241,8 +304,8 @@ class PPOTrainer:
         epoch_rewards: list[float] = []
         nonstandard_metrics = ListDict()
 
-        for batch in tqdm(
-            dataloader, total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
+        for i, batch in tqdm(
+            enumerate(dataloader), total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
         ):
             input_ids = batch["input_ids"].to(self.device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
@@ -292,6 +355,8 @@ class PPOTrainer:
             if mode == EVAL:
                 all_original_seqs += original_seqs
                 all_generated_sentences += [prefixes[-1] for prefixes in batch_prefixes]
+            if mode == TRAIN and i == n_max_batches:
+                break
 
         mean_final_reward = float(mean(epoch_rewards))
         self.add_epoch_metrics(
@@ -313,54 +378,3 @@ class PPOTrainer:
             self.save_generated_eval_sentences(all_original_seqs, all_generated_sentences)
 
         return mean_final_reward
-
-    def save_logs(self) -> None:
-        logs_path = self.save_dir / "log.txt"
-        with open(logs_path, "w") as f:
-            f.write(json.dumps(self.all_data, indent=4))
-
-    def save_summary(self, best_epoch_no: int) -> None:
-        time_now = time.time()
-        time_elapsed = time.gmtime(time_now - self.train_start_time)
-
-        summary_path = self.save_dir / "summary.txt"
-        best_epoch_stats = {
-            key: mean(self.all_data[key][EVAL][best_epoch_no]) for key in self.all_data.keys()
-        }
-        summary = (
-            f"Training time: {time.strftime('%H:%M:%S', time_elapsed)}"
-            f" Number of epochs elapsed: {self.epochs_elapsed}, best stats (final rewards)"
-            f" for epoch {best_epoch_no}, as follows: {best_epoch_stats}\n"
-        )
-        with open(summary_path, "w") as f:
-            f.write(summary)
-
-    def save_plots(self) -> None:
-        plots_path = self.save_dir / "plots"
-        plots_path.mkdir(parents=True, exist_ok=True)
-        for variable in self.all_data.keys():
-            for mode in MODES:
-                plotted_data = self.all_data[variable][mode]
-                if not all([data for data in plotted_data if len(data) == len(plotted_data[0])]):
-                    warnings.warn("Some logged data had inconsistent lengths per epoch.")
-                ys = [y for epoch_data in plotted_data for y in epoch_data]
-                xs = np.linspace(0, len(plotted_data), len(ys))
-                title = f"{mode}_{variable}"
-                plt.title(title)
-                plt.plot(xs, ys)
-                plt.xlabel("iteration")
-                plt.savefig(plots_path / f"{title}.jpg")
-                plt.clf()
-
-    def save_trained_model(self) -> None:
-        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
-        torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
-
-    def save_generated_eval_sentences(
-        self, original_sentences: list[str], generated_sentences: list[str]
-    ) -> None:
-        generated_sentences_path = self.save_dir / "generated_sentences"
-        generated_sentences_path.mkdir(parents=True, exist_ok=True)
-        current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
-        df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
-        df.to_csv(current_save_path)

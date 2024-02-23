@@ -46,6 +46,7 @@ def train(
     device: str,
     max_len: int,
     save_dir: Path,
+    n_max_train_batches: int | None = None,
 ):
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -78,7 +79,7 @@ def train(
     best_epoch = -1
 
     for i in tqdm(range(n_epochs), desc="training...", position=0):
-        ppo_trainer.iteration(train_dataloader, TRAIN)
+        ppo_trainer.iteration(train_dataloader, TRAIN, n_max_batches=n_max_train_batches)
         with torch.no_grad():
             new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, EVAL)
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
@@ -103,6 +104,7 @@ def main(
     attacker_lr: float,
     value_lr: float,
     save_dir: Path,
+    n_max_train_batches: int | None = None
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
@@ -140,6 +142,7 @@ def main(
         trainer_device,
         max_len,
         save_dir,
+        n_max_train_batches
     )
 
 
@@ -158,6 +161,7 @@ if __name__ == "__main__":
     n_epochs = int(echo_params["n_epochs"])
     attacker_lr = float(echo_params["attacker_lr"])
     value_lr = float(echo_params["value_lr"])
+    n_max_train_batches: int | None = echo_params["value_lr"]
 
     save_dir = Path(echo_params["save_dir"])
 
@@ -173,4 +177,5 @@ if __name__ == "__main__":
         attacker_lr,
         value_lr,
         save_dir,
+        n_max_train_batches
     )
