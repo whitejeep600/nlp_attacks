@@ -194,7 +194,7 @@ class PPOTrainer:
         for metric_name in epoch_metrics.keys():
             if metric_name in self.standard_metric_names:
                 if mode == EVAL:
-                    new_metrics = mean(epoch_metrics[metric_name])
+                    new_metrics = [mean(epoch_metrics[metric_name])]
                 else:
                     new_metrics = epoch_metrics[metric_name]
                 self.all_data[metric_name][mode].append(new_metrics)
