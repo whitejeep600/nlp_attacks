@@ -62,9 +62,8 @@ class GenerativeBart:
                     [generated_ids[sequence_ind][: prefix_length + 1]], skip_special_tokens=True
                 )[0]
                 if len(prefix) == previous_decoded_length:
+                    results[-1].append(prefix)
                     break
-                    # Break when decoded sequence length stops increasing - otherwise
-                    # we'd be decoding the padding
                 if len(prefix) != 0:
                     previous_decoded_length = len(prefix)
                     results[-1].append(prefix)
