@@ -48,6 +48,10 @@ def train(
     save_dir: Path,
     n_max_train_batches: int | None = None,
 ):
+    run_no = 0
+    while (save_dir / f"run_{run_no}").exists():
+        run_no += 1
+    save_dir = save_dir / f"run_{run_no}"
     save_dir.mkdir(parents=True, exist_ok=True)
 
     echo_optimizers = {p: AdamW([p], foreach=False, lr=attacker_lr) for p in echo.parameters()}

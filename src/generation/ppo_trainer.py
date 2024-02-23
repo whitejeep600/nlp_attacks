@@ -305,7 +305,11 @@ class PPOTrainer:
         nonstandard_metrics = ListDict()
 
         for i, batch in tqdm(
-            enumerate(dataloader), total=len(dataloader), desc=f"{mode} iteration", leave=False, position=1
+            enumerate(dataloader),
+                total=n_max_batches if n_max_batches is not None else len(dataloader),
+                desc=f"{mode} iteration",
+                leave=False,
+                position=1
         ):
             input_ids = batch["input_ids"].to(self.device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
