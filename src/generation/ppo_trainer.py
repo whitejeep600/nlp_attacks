@@ -304,8 +304,9 @@ class PPOTrainer:
         epoch_rewards: list[float] = []
         nonstandard_metrics = ListDict()
 
-        for i, batch in tqdm(
-            enumerate(dataloader),
+        batch_no = 0
+        for batch in tqdm(
+            dataloader,
                 total=n_max_batches if n_max_batches is not None else len(dataloader),
                 desc=f"{mode} iteration",
                 leave=False,
@@ -359,8 +360,9 @@ class PPOTrainer:
             if mode == EVAL:
                 all_original_seqs += original_seqs
                 all_generated_sentences += [prefixes[-1] for prefixes in batch_prefixes]
-            if mode == TRAIN and i == n_max_batches:
+            if mode == TRAIN and batch_no == n_max_batches:
                 break
+            batch_no += 1
 
         mean_final_reward = float(mean(epoch_rewards))
         self.add_epoch_metrics(
