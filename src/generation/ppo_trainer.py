@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from numpy import mean
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -43,6 +44,8 @@ class PPOTrainer:
         trained_model: GenerativeBart,
         rewards_and_metrics_function: Callable,
         value_model: ValueModel,
+        trained_model_optimizer: Optimizer,
+        value_model_optimizer: Optimizer,
         max_len: int,
         device: str,
         stats_save_dir: Path,
@@ -52,6 +55,8 @@ class PPOTrainer:
         self.reference_model = copy.deepcopy(self.trained_model)
         self.reference_model.eval()
         self.value_model = value_model
+        self.trained_model_optimizer = trained_model_optimizer
+        self.value_model_optimizer = value_model_optimizer
         self.max_len = max_len
         self.device = device
         self.save_dir = stats_save_dir
@@ -171,7 +176,9 @@ class PPOTrainer:
         return policy_loss
 
     def policy_loss_step(self, policy_loss: torch.Tensor) -> None:
+        self.trained_model_optimizer.zero_grad()
         policy_loss.backward()
+        self.trained_model_optimizer.step()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
@@ -184,7 +191,9 @@ class PPOTrainer:
         return value_loss
 
     def value_loss_step(self, value_loss: torch.Tensor) -> None:
+        self.value_model_optimizer.zero_grad()
         value_loss.backward(retain_graph=True)
+        self.value_model_optimizer.step()
 
     def add_epoch_metrics(
         self,

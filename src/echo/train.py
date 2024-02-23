@@ -54,22 +54,8 @@ def train(
     save_dir = save_dir / f"run_{run_no}"
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    echo_optimizers = {p: AdamW([p], foreach=False, lr=attacker_lr) for p in echo.parameters()}
-    value_optimizers = {p: AdamW([p], foreach=False, lr=value_lr) for p in value_model.parameters()}
-
-    def echo_optimizer_hook(parameter) -> None:
-        echo_optimizers[parameter].step()
-        echo_optimizers[parameter].zero_grad(set_to_none=True)
-
-    def value_optimizer_hook(parameter) -> None:
-        value_optimizers[parameter].step()
-        value_optimizers[parameter].zero_grad(set_to_none=True)
-
-    for p in echo.parameters():
-        p.register_post_accumulate_grad_hook(echo_optimizer_hook)
-
-    for p in value_model.parameters():
-        p.register_post_accumulate_grad_hook(value_optimizer_hook)
+    echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
+    value_optimizer = AdamW(value_model.parameters(), lr=value_lr)
 
     similarity_evaluator.eval()
 
@@ -78,7 +64,7 @@ def train(
         similarity_evaluator=similarity_evaluator,
         device=device,
     )
-    ppo_trainer = PPOTrainer(echo, reward_function, value_model, max_len, device, save_dir)
+    ppo_trainer = PPOTrainer(echo, reward_function, value_model, echo_optimizer, value_optimizer, max_len, device, save_dir)
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
