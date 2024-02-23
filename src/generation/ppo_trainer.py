@@ -64,7 +64,7 @@ class PPOTrainer:
             metric_name: {TRAIN: [], EVAL: []} for metric_name in self.standard_metric_names
         }
         self.train_start_time = time.time()
-        self.epochs_elapsed = -1
+        self.epochs_elapsed = 0
 
     def train(self) -> None:
         self.trained_model.train()
@@ -86,7 +86,6 @@ class PPOTrainer:
             self.train()
         else:
             self.eval()
-        self.epochs_elapsed += 1
 
     def decode_prefixes(self, generated_ids: list[torch.Tensor]) -> list[list[str]]:
         return self.trained_model.decode_prefixes(generated_ids)
@@ -113,14 +112,6 @@ class PPOTrainer:
                 new_reference_probabilites = self.reference_model.get_reference_probabilities(
                         seq, new_ids,
                     )
-
-            # We don't want to include the generation logit of the EOS token.
-            #   edit: don't we lol
-            # if new_ids[-1] == self.trained_model.bert.generation_config.eos_token_id:
-            #     new_token_probabilites = new_token_probabilites[:-1]
-            #     new_reference_probabilites = new_reference_probabilites[:-1]
-            #     generated_ids[-1] = generated_ids[-1][:-1]
-
             token_probabilities.append(new_token_probabilites)
             reference_probabilities.append(new_reference_probabilites)
         return generated_ids, token_probabilities, reference_probabilities
@@ -229,7 +220,7 @@ class PPOTrainer:
             # For eval iterations, we are not interested in how the metrics change within
             # one iteration, because they don't include changing the model's parameters.
             if mode == EVAL:
-                new_metrics = mean(epoch_metrics[metric_name])
+                new_metrics = [mean(epoch_metrics[metric_name])]
             else:
                 new_metrics = epoch_metrics[metric_name]
             self.all_data[metric_name][mode].append(new_metrics)
@@ -261,7 +252,7 @@ class PPOTrainer:
         for variable in self.all_data.keys():
             for mode in MODES:
                 plotted_data = self.all_data[variable][mode]
-                if not all([data for data in plotted_data if len(data) == len(plotted_data[0])]):
+                if not all([len(data) == len(plotted_data[0]) for data in plotted_data]):
                     warnings.warn("Some logged data had inconsistent lengths per epoch.")
                 ys = [y for epoch_data in plotted_data for y in epoch_data]
                 xs = np.linspace(0, len(plotted_data), len(ys))
@@ -400,3 +391,6 @@ class PPOTrainer:
             self.save_generated_eval_sentences(all_original_seqs, all_generated_sentences)
 
         return mean_final_reward
+
+    def conclude_epoch(self) -> None:
+        self.epochs_elapsed += 1

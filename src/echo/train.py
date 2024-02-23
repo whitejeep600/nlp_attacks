@@ -86,6 +86,7 @@ def train(
         ppo_trainer.iteration(train_dataloader, TRAIN, n_max_batches=n_max_train_batches)
         with torch.no_grad():
             new_mean_final_rewards = ppo_trainer.iteration(eval_dataloader, EVAL)
+        ppo_trainer.conclude_epoch()
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
             best_epoch = i
             best_mean_final_rewards = new_mean_final_rewards
