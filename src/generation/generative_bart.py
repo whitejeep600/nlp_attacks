@@ -5,7 +5,9 @@ from transformers import BartForConditionalGeneration, BartTokenizer
 
 
 class GenerativeBart:
-    def __init__(self, model_name: str, max_length: int, device: str, weights_path: Path | None = None):
+    def __init__(
+        self, model_name: str, max_length: int, device: str, weights_path: Path | None = None
+    ):
         super().__init__()
         self.bert = BartForConditionalGeneration.from_pretrained(model_name)
         if weights_path is not None:
@@ -81,9 +83,9 @@ class GenerativeBart:
     # The purpose of this is to get the ratios of the generating model's probabilities to these
     # "reference" probabilities, which later gets plugged into PPO's policy loss.
     def get_reference_probabilities(
-            self,
-            input_ids: torch.Tensor,  # shape: [input_seq_len]
-            output_ids: torch.Tensor  # shape: [output_seq_len]
+        self,
+        input_ids: torch.Tensor,  # shape: [input_seq_len]
+        output_ids: torch.Tensor,  # shape: [output_seq_len]
     ) -> torch.Tensor:
         input_ids = input_ids.to(self.device)
         output_ids = output_ids.to(self.device)
@@ -100,9 +102,9 @@ class GenerativeBart:
 
     # This interface is as convenient as it gets, but it's mostly useful for debugging.
     def generate_response(
-            self,
-            input_text: str,
-            reference_model: "GenerativeBart"  # no this is really just for debugging
+        self,
+        input_text: str,
+        reference_model: "GenerativeBart",  # no this is really just for debugging
     ) -> str:
         tokenized_text = self.tokenizer(
             input_text,
@@ -112,15 +114,11 @@ class GenerativeBart:
             truncation=True,
         )
         input_ids = tokenized_text["input_ids"]
-        output_ids, logits = self.generate_with_greedy_decoding(
-            input_ids, 16
-        )
+        output_ids, logits = self.generate_with_greedy_decoding(input_ids, 16)
         prefixes = self.decode_prefixes([output_ids])[0]
         generated_sequence = prefixes[-1]
         token_probabilites = torch.stack(
             [torch.softmax(logits[i][0], dim=0)[output_ids[i + 1]] for i in range(len(logits))],
         )
-        reference_probabilites = reference_model.get_reference_probabilities(
-                input_ids, output_ids
-            )
+        reference_probabilites = reference_model.get_reference_probabilities(input_ids, output_ids)
         return generated_sequence

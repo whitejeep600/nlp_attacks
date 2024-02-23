@@ -109,7 +109,7 @@ def main(
     attacker_lr: float,
     value_lr: float,
     save_dir: Path,
-    n_max_train_batches: int | None = None
+    n_max_train_batches: int | None = None,
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
@@ -147,7 +147,7 @@ def main(
         trainer_device,
         max_len,
         save_dir,
-        n_max_train_batches
+        n_max_train_batches,
     )
 
 
@@ -182,5 +182,5 @@ if __name__ == "__main__":
         attacker_lr,
         value_lr,
         save_dir,
-        n_max_train_batches
+        n_max_train_batches,
     )

@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from src.generation.generative_bart import GenerativeBart
 from src.generation.value_model import ValueModel
-from src.utils import ListDict, all_equal
+from src.utils import ListDict
 
 # Discount factor, following the notation from the original PPO paper by Schulman et al.
 GAMMA = 0.99
@@ -110,8 +110,9 @@ class PPOTrainer:
             )
             with torch.no_grad():
                 new_reference_probabilites = self.reference_model.get_reference_probabilities(
-                        seq, new_ids,
-                    )
+                    seq,
+                    new_ids,
+                )
             token_probabilities.append(new_token_probabilites)
             reference_probabilities.append(new_reference_probabilites)
         return generated_ids, token_probabilities, reference_probabilities
@@ -194,7 +195,7 @@ class PPOTrainer:
         for metric_name in epoch_metrics.keys():
             if metric_name in self.standard_metric_names:
                 if mode == EVAL:
-                    new_metrics = [mean(epoch_metrics[metric_name])]
+                    new_metrics = [float(mean(epoch_metrics[metric_name]))]
                 else:
                     new_metrics = epoch_metrics[metric_name]
                 self.all_data[metric_name][mode].append(new_metrics)
@@ -203,7 +204,9 @@ class PPOTrainer:
         for metric_name in self.standard_metric_names:
             if metric_name not in epoch_metrics:
                 warnings.warn(f"Metric '{metric_name}' was not passed for this iteration!")
-        average_epoch_metrics = {key: mean(epoch_metrics[key]) for key in epoch_metrics.keys()}
+        average_epoch_metrics = {
+            key: float(mean(epoch_metrics[key])) for key in epoch_metrics.keys()
+        }
         print(
             f"Epoch {self.epochs_elapsed},"
             f" this epoch's {mode} stats, as follows:\n"
@@ -220,7 +223,7 @@ class PPOTrainer:
             # For eval iterations, we are not interested in how the metrics change within
             # one iteration, because they don't include changing the model's parameters.
             if mode == EVAL:
-                new_metrics = [mean(epoch_metrics[metric_name])]
+                new_metrics = [float(mean(epoch_metrics[metric_name]))]
             else:
                 new_metrics = epoch_metrics[metric_name]
             self.all_data[metric_name][mode].append(new_metrics)
@@ -236,7 +239,8 @@ class PPOTrainer:
 
         summary_path = self.save_dir / "summary.txt"
         best_epoch_stats = {
-            key: mean(self.all_data[key][EVAL][best_epoch_no]) for key in self.all_data.keys()
+            key: float(mean(self.all_data[key][EVAL][best_epoch_no]))
+            for key in self.all_data.keys()
         }
         summary = (
             f"Training time: {time.strftime('%H:%M:%S', time_elapsed)}"
@@ -278,11 +282,11 @@ class PPOTrainer:
 
     # The three most common programming errors are infinite recursion and off-by-one.
     def run_length_checks(
-            self,
-            batch_prefixes: list[list[str]],
-            generated_ids: list[torch.Tensor],
-            token_probs: list[torch.Tensor],
-            reference_probs: list[torch.Tensor]
+        self,
+        batch_prefixes: list[list[str]],
+        generated_ids: list[torch.Tensor],
+        token_probs: list[torch.Tensor],
+        reference_probs: list[torch.Tensor],
     ) -> None:
         for sample_no in range(len(batch_prefixes)):
             if not len(generated_ids[sample_no]) - 1 == len(batch_prefixes[sample_no]):
@@ -304,10 +308,7 @@ class PPOTrainer:
                 )
 
     def iteration(
-        self,
-        dataloader: DataLoader,
-        mode: str,
-        n_max_batches: int | None = None
+        self, dataloader: DataLoader, mode: str, n_max_batches: int | None = None
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
 
@@ -324,10 +325,10 @@ class PPOTrainer:
 
         for batch_no, batch in tqdm(
             enumerate(dataloader),
-                total=n_max_batches if n_max_batches is not None else len(dataloader),
-                desc=f"{mode} iteration",
-                leave=False,
-                position=1
+            total=n_max_batches if n_max_batches is not None else len(dataloader),
+            desc=f"{mode} iteration",
+            leave=False,
+            position=1,
         ):
             input_ids = batch["input_ids"].to(self.device)
             generated_ids, token_probs, reference_probs = self.decode_tokens_and_get_logits(
