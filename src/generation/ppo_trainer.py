@@ -285,6 +285,37 @@ class PPOTrainer:
         df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
         df.to_csv(current_save_path)
 
+    # The three most common programming errors are infinite recursion and off-by-one.
+    def run_length_checks(
+            self,
+            batch_prefixes: list[list[str]],
+            generated_ids: list[torch.Tensor],
+            token_probs: list[torch.Tensor],
+            reference_probs: list[torch.Tensor]
+    ) -> None:
+        for sample_no in range(len(batch_prefixes)):
+            if generated_ids[sample_no][-1] == self.trained_model.bert.generation_config.eos_token_id:
+                expected_prefixes_len = len(generated_ids[sample_no]) - 2
+            else:
+                expected_prefixes_len = len(generated_ids[sample_no]) - 1
+            if not expected_prefixes_len == len(batch_prefixes[sample_no]):
+                warnings.warn(
+                    f"Unexpected generation length, generated ids {generated_ids[sample_no]}, "
+                    f" batch prefixes {batch_prefixes}"
+                )
+
+            if not len(token_probs[sample_no]) == len(reference_probs[sample_no]):
+                warnings.warn(
+                    f"Token generated and reference probs differ in length,"
+                    f" generated {token_probs[sample_no]}, reference {reference_probs[sample_no]}\n"
+                )
+            if not len(token_probs[sample_no]) == len(generated_ids[sample_no]) - 1:
+                warnings.warn(
+                    f"Expected token generation probabilities for all generated tokens"
+                    f" except the start token, got generated token ids {generated_ids[sample_no]},"
+                    f" probs {token_probs[sample_no]}\n"
+                )
+
     def iteration(
         self,
         dataloader: DataLoader,
@@ -316,16 +347,7 @@ class PPOTrainer:
                 input_ids, self.max_len
             )
             batch_prefixes = self.decode_prefixes(generated_ids)
-            for i in range(len(batch_prefixes)):
-                if not all_equal(
-                    [len(token_probs[i]), len(reference_probs[i]), len(batch_prefixes[i])]
-                ):
-                    warnings.warn(
-                        f"Not all lengths equal, generated ids {generated_ids[i]}, token"
-                        f" probs {token_probs}, batch prefixes {batch_prefixes}"
-                    )
-                    token_probs[i] = token_probs[i][: len(batch_prefixes[i])]
-                    reference_probs[i] = reference_probs[i][: len(batch_prefixes[i])]
+            self.run_length_checks(batch_prefixes, generated_ids, token_probs, reference_probs)
 
             original_seqs = batch["original_seq"]
 

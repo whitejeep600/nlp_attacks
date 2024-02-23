@@ -97,7 +97,7 @@ class GenerativeBart:
         reference_probabilities: list[torch.Tensor] = []
         for i in range(1, len(output_ids)):
             next_one = self.bert(
-                input_ids=input_ids,
+                input_ids=input_ids.unsqueeze(0),
                 decoder_input_ids=output_ids[:i].unsqueeze(0),
             )
             probabilities = torch.softmax(next_one.logits[0][0], dim=0)
