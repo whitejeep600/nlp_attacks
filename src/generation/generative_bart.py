@@ -3,6 +3,8 @@ from pathlib import Path
 import torch
 from transformers import BartForConditionalGeneration, BartTokenizer
 
+from src.generation.value_model import ValueModel
+
 
 class GenerativeBart:
     def __init__(
@@ -95,7 +97,7 @@ class GenerativeBart:
                 input_ids=input_ids.unsqueeze(0),
                 decoder_input_ids=output_ids[:i].unsqueeze(0),
             )
-            probabilities = torch.softmax(next_one.logits[0][0], dim=0)
+            probabilities = torch.softmax(next_one.logits[0][-1], dim=0)
             next_probability = probabilities[output_ids[i]].reshape(1)
             reference_probabilities.append(next_probability)
         return torch.cat(reference_probabilities, dim=0)
@@ -105,6 +107,7 @@ class GenerativeBart:
         self,
         input_text: str,
         reference_model: "GenerativeBart",  # no this is really just for debugging
+        #value_model: ValueModel
     ) -> str:
         tokenized_text = self.tokenizer(
             input_text,
@@ -115,10 +118,17 @@ class GenerativeBart:
         )
         input_ids = tokenized_text["input_ids"]
         output_ids, logits = self.generate_with_greedy_decoding(input_ids, 16)
-        prefixes = self.decode_prefixes([output_ids])[0]
-        generated_sequence = prefixes[-1]
-        token_probabilites = torch.stack(
-            [torch.softmax(logits[i][0], dim=0)[output_ids[i + 1]] for i in range(len(logits))],
-        )
-        reference_probabilites = reference_model.get_reference_probabilities(input_ids, output_ids)
+        generated_prefixes = self.decode_prefixes([output_ids])[0]
+        generated_sequence = generated_prefixes[-1]
+
+        expected_response_ids = input_ids
+        expected_prefixes = self.decode_prefixes(expected_response_ids)[0]
+
+        #generated_values = [value_model.get_value(prefix, input_text) for prefix in generated_prefixes]
+        #expected_values = [value_model.get_value(prefix, input_text) for prefix in expected_prefixes]
+        pass
+        # token_probabilites = torch.stack(
+        #     [torch.softmax(logits[i][0], dim=0)[output_ids[i + 1]] for i in range(len(logits))],
+        # )
+        # reference_probabilites = reference_model.get_reference_probabilities(input_ids, output_ids)
         return generated_sequence
