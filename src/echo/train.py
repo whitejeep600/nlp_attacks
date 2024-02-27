@@ -46,6 +46,8 @@ def train(
     device: str,
     max_len: int,
     save_dir: Path,
+    call_parameters_save_path: Path,
+    params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
     run_no = 0
@@ -53,6 +55,7 @@ def train(
         run_no += 1
     save_dir = save_dir / f"run_{run_no}"
     save_dir.mkdir(parents=True, exist_ok=True)
+    call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
     echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
     value_optimizer = AdamW(value_model.parameters(), lr=value_lr)
@@ -64,7 +67,18 @@ def train(
         similarity_evaluator=similarity_evaluator,
         device=device,
     )
-    ppo_trainer = PPOTrainer(echo, reward_function, value_model, echo_optimizer, value_optimizer, max_len, device, save_dir)
+    ppo_trainer = PPOTrainer(
+        echo,
+        reward_function,
+        value_model,
+        echo_optimizer,
+        value_optimizer,
+        max_len,
+        device,
+        save_dir,
+        call_parameters_save_path,
+        params_to_save,
+    )
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
@@ -93,6 +107,8 @@ def main(
     attacker_lr: float,
     value_lr: float,
     save_dir: Path,
+    call_parameters_save_path: Path,
+    params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
     devices = get_available_torch_devices()
@@ -131,6 +147,8 @@ def main(
         trainer_device,
         max_len,
         save_dir,
+        call_parameters_save_path,
+        params_to_save,
         n_max_train_batches,
     )
 
@@ -153,6 +171,7 @@ if __name__ == "__main__":
     n_max_train_batches: int | None = echo_params["n_max_train_batches"]
 
     save_dir = Path(echo_params["save_dir"])
+    call_parameters_save_path = Path(echo_params["call_parameters_save_path"])
 
     main(
         source_model_name,
@@ -166,5 +185,7 @@ if __name__ == "__main__":
         attacker_lr,
         value_lr,
         save_dir,
+        call_parameters_save_path,
+        echo_params,
         n_max_train_batches,
     )

@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from src.generation.generative_bart import GenerativeBart
 from src.generation.value_model import ValueModel
-from src.utils import ListDict
+from src.utils import ListDict, get_current_git_commit_id
 
 # Discount factor, following the notation from the original PPO paper by Schulman et al.
 GAMMA = 0.99
@@ -48,7 +48,9 @@ class PPOTrainer:
         value_model_optimizer: Optimizer,
         max_len: int,
         device: str,
-        stats_save_dir: Path,
+        save_dir: Path,
+        call_parameters_save_path: Path,
+        params_to_save: dict,
     ):
         self.trained_model = trained_model
         self.rewards_and_metrics_function = rewards_and_metrics_function
@@ -59,7 +61,8 @@ class PPOTrainer:
         self.value_model_optimizer = value_model_optimizer
         self.max_len = max_len
         self.device = device
-        self.save_dir = stats_save_dir
+        self.save_dir = save_dir
+        self.call_parameters_save_path = call_parameters_save_path
         self.standard_metric_names = [
             REWARD_METRIC,
             POLICY_LOSS_METRIC,
@@ -70,6 +73,8 @@ class PPOTrainer:
         }
         self.train_start_time = time.time()
         self.epochs_elapsed = 0
+        self.params_to_save = params_to_save
+        self.params_to_save.update({"git_commit_id": get_current_git_commit_id()})
 
     def train(self) -> None:
         self.trained_model.train()
@@ -295,6 +300,12 @@ class PPOTrainer:
         df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
         df.to_csv(current_save_path)
 
+    def save_call_parameters(self) -> None:
+        # For comparison, we likely want to save these parameters together for all
+        # model runs, as a general log of the experiment process.
+        with open(self.call_parameters_save_path, "a") as f:
+            f.write(f"{json.dumps(self.params_to_save, indent=2)}\n\n")
+
     # The three most common programming errors are infinite recursion and off-by-one.
     def run_length_checks(
         self,
@@ -414,7 +425,7 @@ class PPOTrainer:
 
     def save_stuff(self, best_epoch_no: int) -> None:
         print(f"Saving stuff to {self.save_dir}")
-        self.save_logs()
+        self.save_call_parameters()
         self.save_summary(best_epoch_no)
         self.save_plots()
-
+        self.save_call_parameters()

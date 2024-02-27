@@ -1,3 +1,4 @@
+import subprocess
 from typing import Any
 
 import torch
@@ -14,9 +15,22 @@ def all_equal(values) -> bool:
     return len(values) == 0 or all([value == values[0] for value in values])
 
 
+def get_command_output(command: str, arguments: list[str]) -> str:
+    # removing the quotes around the output
+    return (
+        subprocess.run([command, *arguments], stdout=subprocess.PIPE)
+        .stdout.decode("utf-8")
+        .strip()[1:-1]
+    )
+
+
+def get_current_git_commit_id() -> str:
+    return get_command_output("git", ["log", '--format="%H"', "-n 1"])
+
+
 # Just a util to automatically create a target list if it doesn't exist, yo
 class ListDict:
-    def __init__(self):
+    def __init__(self) -> None:
         self.lists: dict[str, list] = {}
 
     def append(self, list_name: str, item: Any) -> None:
