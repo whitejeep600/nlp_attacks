@@ -181,12 +181,10 @@ class PPOTrainer:
         return policy_loss
 
     def policy_loss_backprop(self, policy_loss: torch.Tensor, step: bool = False) -> None:
+        policy_loss.backward()
         if step:
-            self.trained_model_optimizer.zero_grad()
-            policy_loss.backward()
             self.trained_model_optimizer.step()
-        else:
-            policy_loss.backward()
+            self.trained_model_optimizer.zero_grad()
 
     def get_value_loss(
         self, rewards: list[torch.Tensor], values: list[torch.Tensor]
@@ -199,12 +197,10 @@ class PPOTrainer:
         return value_loss
 
     def value_loss_backprop(self, value_loss: torch.Tensor, step: bool = False) -> None:
+        value_loss.backward(retain_graph=True)
         if step:
-            self.value_model_optimizer.zero_grad()
-            value_loss.backward(retain_graph=True)
             self.value_model_optimizer.step()
-        else:
-            value_loss.backward(retain_graph=True)
+            self.value_model_optimizer.zero_grad()
 
     def add_epoch_metrics(
         self,

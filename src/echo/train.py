@@ -54,7 +54,7 @@ def train(
     while (save_dir / f"run_{run_no}").exists():
         run_no += 1
     save_dir = save_dir / f"run_{run_no}"
-    params_to_save.update({"save_dir": save_dir})
+    params_to_save.update({"save_dir": str(save_dir)})
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
