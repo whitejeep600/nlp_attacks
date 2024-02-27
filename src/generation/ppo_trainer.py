@@ -287,9 +287,9 @@ class PPOTrainer:
                 plt.savefig(plots_path / f"{title}.jpg", dpi=256)
                 plt.clf()
 
-    def save_trained_model(self) -> None:
+    def save_trained_models(self) -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
-        torch.save(self.value_model.model.state_dict(), self.save_dir / "value_ckpt.pt")
+        torch.save(self.value_model.state_dict(), self.save_dir / "value_ckpt.pt")
 
     def save_generated_eval_sentences(
         self, original_sentences: list[str], generated_sentences: list[str]
@@ -425,7 +425,7 @@ class PPOTrainer:
 
     def save_stuff(self, best_epoch_no: int) -> None:
         print(f"Saving stuff to {self.save_dir}")
-        self.save_call_parameters()
+        self.save_logs()
         self.save_summary(best_epoch_no)
         self.save_plots()
         self.save_call_parameters()

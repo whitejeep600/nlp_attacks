@@ -54,6 +54,7 @@ def train(
     while (save_dir / f"run_{run_no}").exists():
         run_no += 1
     save_dir = save_dir / f"run_{run_no}"
+    params_to_save.update({"save_dir": save_dir})
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +91,7 @@ def train(
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
             best_epoch = i
             best_mean_final_rewards = new_mean_final_rewards
-            ppo_trainer.save_trained_model()
+            ppo_trainer.save_trained_models()
 
     ppo_trainer.save_stuff(best_epoch)
 
