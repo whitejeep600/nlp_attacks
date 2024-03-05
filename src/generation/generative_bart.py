@@ -56,6 +56,37 @@ class GenerativeBart:
                 break
         return decoded.squeeze(0), scores
 
+    def generate_with_random_sampling(
+        self, inputs: torch.Tensor, max_length: int | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if max_length is None:
+            max_length = self.max_length
+        """
+        As above, but with each next token sampled with its predicted probability,
+        instead of greedy decoding. Also, return a simple tensor of generation
+        probabilities at each step.
+
+        """
+        inputs = inputs.to(self.device)
+        decoded = torch.Tensor([[self.bert.config.decoder_start_token_id]]).int().to(self.device)
+        probabilities: list[torch.Tensor] = []
+        for _ in range(max_length - 1):
+            next_one = self.bert(
+                input_ids=inputs,
+                decoder_input_ids=decoded,
+            )
+            new_scores = next_one.logits[0][-1, :]
+            next_id = torch.multinomial(new_scores, 1, replacement=True)[0]
+            new_probabilities = torch.softmax(new_scores, dim=-1)
+            decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
+            probabilities.append(new_probabilities[next_id])
+            if next_id == self.bert.generation_config.eos_token_id:
+                break
+        return decoded.squeeze(0), torch.cat(probabilities, dim=-1)
+
+    def decode(self, generated_ids: list[torch.Tensor]) -> list[str]:
+        return self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
     def decode_prefixes(self, generated_ids: list[torch.Tensor]) -> list[list[str]]:
         results: list[list[str]] = []
         for sequence_ind in range(len(generated_ids)):
@@ -107,7 +138,7 @@ class GenerativeBart:
         self,
         input_text: str,
         reference_model: "GenerativeBart",  # no this is really just for debugging
-        #value_model: ValueModel
+        # value_model: ValueModel
     ) -> str:
         tokenized_text = self.tokenizer(
             input_text,
@@ -124,8 +155,8 @@ class GenerativeBart:
         expected_response_ids = input_ids
         expected_prefixes = self.decode_prefixes(expected_response_ids)[0]
 
-        #generated_values = [value_model.get_value(prefix, input_text) for prefix in generated_prefixes]
-        #expected_values = [value_model.get_value(prefix, input_text) for prefix in expected_prefixes]
+        # generated_values = [value_model.get_value(prefix, input_text) for prefix in generated_prefixes]
+        # expected_values = [value_model.get_value(prefix, input_text) for prefix in expected_prefixes]
         pass
         # token_probabilites = torch.stack(
         #     [torch.softmax(logits[i][0], dim=0)[output_ids[i + 1]] for i in range(len(logits))],
