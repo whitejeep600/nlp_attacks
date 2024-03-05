@@ -138,7 +138,6 @@ class GenerativeBart:
         self,
         input_text: str,
         reference_model: "GenerativeBart",  # no this is really just for debugging
-        # value_model: ValueModel
     ) -> str:
         tokenized_text = self.tokenizer(
             input_text,

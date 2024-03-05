@@ -328,12 +328,12 @@ class DPOTrainer:
         logs_path = self.save_dir / "log.txt"
         with open(logs_path, "w") as f:
             serializable_all_data = {
-                self.all_data[metric_name]: {
+                metric_name: {
                     mode: [
-                        np.array(metric_mode_epoch_stats)
+                        metric_mode_epoch_stats.tolist()
                         for metric_mode_epoch_stats in self.all_data[metric_name][mode]
                     ]
-                    for mode in self.all_data[metric_name]
+                    for mode in self.all_data[metric_name].keys()
                 }
                 for metric_name in self.all_data.keys()
             }
