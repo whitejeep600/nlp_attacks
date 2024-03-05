@@ -24,6 +24,8 @@ MODES = [TRAIN, EVAL]
 
 POLICY_LOSS_METRIC = "policy_loss"
 
+PLOT_AVG_WINDOW_LENGTH = 16
+
 
 class SampleGenerations:
     def __init__(
@@ -80,7 +82,7 @@ class DPOTrainer:
         self.standard_metric_names = [
             POLICY_LOSS_METRIC,
         ]
-        self.all_data: dict[str, dict[str, list[list[float]]]] = {
+        self.all_data: dict[str, dict[str, list[np.ndarray]]] = {
             metric_name: {TRAIN: [], EVAL: []} for metric_name in self.standard_metric_names
         }
         self.train_start_time = time.time()
@@ -115,7 +117,7 @@ class DPOTrainer:
                     new_metrics = [float(mean(epoch_metrics[metric_name]))]
                 else:
                     new_metrics = epoch_metrics[metric_name]
-                self.all_data[metric_name][mode].append(new_metrics)
+                self.all_data[metric_name][mode].append(np.array(new_metrics))
             else:
                 warnings.warn(f"Metric '{metric_name}' is not standard, ignoring.")
         for metric_name in self.standard_metric_names:
@@ -143,7 +145,7 @@ class DPOTrainer:
                 new_metrics = [float(mean(epoch_metrics[metric_name]))]
             else:
                 new_metrics = epoch_metrics[metric_name]
-            self.all_data[metric_name][mode].append(new_metrics)
+            self.all_data[metric_name][mode].append(np.array(new_metrics))
 
     def save_generated_eval_sentences(
         self, original_sentences: list[str], generated_sentences: list[str]
@@ -234,7 +236,7 @@ class DPOTrainer:
         worse_seq_logratios = torch.log(worse_seq_model_probabilities) - torch.log(
             worse_seq_reference_probabilities
         )
-        return -1 * logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios))
+        return -1 * logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios)).mean()
 
     def policy_loss_step(self, policy_loss: torch.Tensor):
         self.trained_model_optimizer.zero_grad()
@@ -325,7 +327,17 @@ class DPOTrainer:
     def save_logs(self) -> None:
         logs_path = self.save_dir / "log.txt"
         with open(logs_path, "w") as f:
-            f.write(json.dumps(self.all_data, indent=4))
+            serializable_all_data = {
+                self.all_data[metric_name]: {
+                    mode: [
+                        np.array(metric_mode_epoch_stats)
+                        for metric_mode_epoch_stats in self.all_data[metric_name][mode]
+                    ]
+                    for mode in self.all_data[metric_name]
+                }
+                for metric_name in self.all_data.keys()
+            }
+            f.write(json.dumps(serializable_all_data, indent=4))
 
     def save_summary(self, best_epoch_no: int) -> None:
         time_now = time.time()
@@ -352,7 +364,17 @@ class DPOTrainer:
                 plotted_data = self.all_data[variable][mode]
                 if not all([len(data) == len(plotted_data[0]) for data in plotted_data]):
                     warnings.warn("Some logged data had inconsistent lengths per epoch.")
-                ys = [y for epoch_data in plotted_data for y in epoch_data]
+                if mode == TRAIN:
+                    averaged_data = [
+                        epoch_data[
+                            np.arange(epoch_data.shape[0] - PLOT_AVG_WINDOW_LENGTH + 1)[:, None]
+                            + np.arange(PLOT_AVG_WINDOW_LENGTH)
+                        ].mean(axis=1)
+                        for epoch_data in plotted_data
+                    ]
+                    ys = [y for epoch_data in averaged_data for y in epoch_data]
+                else:
+                    ys = [y for epoch_data in plotted_data for y in epoch_data]
                 xs = np.linspace(0, len(plotted_data), len(ys))
                 title = f"{mode}_{variable}"
                 plt.title(title)
