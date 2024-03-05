@@ -110,7 +110,7 @@ def main(
     save_dir: Path,
     call_parameters_save_path: Path,
     params_to_save: dict,
-    n_max_train_batches: int | None = None,
+    n_max_train_samples: int | None = None,
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
@@ -135,6 +135,11 @@ def main(
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
+
+    if n_max_train_samples is not None:
+        n_max_train_batches = n_max_train_samples // batch_size
+    else:
+        n_max_train_batches = None
 
     train(
         echo,
@@ -169,7 +174,7 @@ if __name__ == "__main__":
     n_epochs = int(echo_params["n_epochs"])
     attacker_lr = float(echo_params["attacker_lr"])
     value_lr = float(echo_params["value_lr"])
-    n_max_train_batches: int | None = echo_params["n_max_train_batches"]
+    n_max_train_samples: int | None = echo_params["n_max_train_samples"]
 
     save_dir = Path(echo_params["save_dir"])
     call_parameters_save_path = Path(echo_params["call_parameters_save_path"])
@@ -188,5 +193,5 @@ if __name__ == "__main__":
         save_dir,
         call_parameters_save_path,
         echo_params,
-        n_max_train_batches,
+        n_max_train_samples,
     )

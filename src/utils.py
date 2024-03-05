@@ -1,6 +1,7 @@
 import subprocess
 from typing import Any
 
+import numpy as np
 import torch
 
 
@@ -26,6 +27,10 @@ def get_command_output(command: str, arguments: list[str]) -> str:
 
 def get_current_git_commit_id() -> str:
     return get_command_output("git", ["log", '--format="%H"', "-n 1"])
+
+
+def get_ceil_power_of_2(n: int) -> int:
+    return 2 ** int(np.ceil(np.log(n) / np.log(2)))
 
 
 # Just a util to automatically create a target list if it doesn't exist, yo

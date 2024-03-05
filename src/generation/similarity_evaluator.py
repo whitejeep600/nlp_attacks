@@ -1,18 +1,13 @@
 import torch
 from sentence_transformers import SentenceTransformer
-from torch import Tensor
+
+from src.utils import get_ceil_power_of_2
 
 
 class SimilarityEvaluator:
     def __init__(self, model_name: str, device: str):
         self.model = SentenceTransformer(model_name)
         self.model.to(device)
-        self.whole_reference_encoding: Tensor | None = None
-        self.tokens: list[str] = []
-        self.absolute_ind_to_sentence_ind: dict[int, tuple[int, int]] = {}
-        self.sentences: list[list[str]] = []
-        self.sentence_encodings: list[Tensor] = []
-        self.sentence_pos_tags: list[list[str]] = []
         self.eval()
 
     def evaluate(self, text1: str, text2: str) -> float:
@@ -21,9 +16,10 @@ class SimilarityEvaluator:
 
     def evaluate_prefixes(self, prefixes: list[str], text: str) -> list[float]:
         whole_reference_encoding = self.model.encode(text, convert_to_tensor=True)
-        prefix_encodings = [
-            self.model.encode(prefix, convert_to_tensor=True) for prefix in prefixes
-        ]
+        prefix_encodings = self.model.encode(
+            prefixes, convert_to_tensor=True, batch_size=get_ceil_power_of_2(len(prefixes))
+        )
+
         return [
             torch.cosine_similarity(whole_reference_encoding, prefix_encoding, dim=0).item()
             for prefix_encoding in prefix_encodings
