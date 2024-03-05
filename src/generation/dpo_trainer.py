@@ -169,19 +169,20 @@ class DPOTrainer:
         all_generations: list[SampleGenerations] = []
         for sample_original_seq, sample_input_ids in zip(batch_original_seqs, batch_input_ids):
             generation_0, probs_0 = self.trained_model.generate_with_random_sampling(
-                sample_input_ids, self.max_len
+                sample_input_ids.unsqueeze(0), self.max_len
             )
             generation_1, probs_1 = self.trained_model.generate_with_random_sampling(
-                sample_input_ids, self.max_len
+                sample_input_ids.unsqueeze(0), self.max_len
             )
-            reference_probs_0 = self.reference_model.get_reference_probabilities(
-                sample_input_ids,
-                generation_0,
-            )
-            reference_probs_1 = self.reference_model.get_reference_probabilities(
-                sample_input_ids,
-                generation_1,
-            )
+            with torch.no_grad():
+                reference_probs_0 = self.reference_model.get_reference_probabilities(
+                    sample_input_ids,
+                    generation_0,
+                )
+                reference_probs_1 = self.reference_model.get_reference_probabilities(
+                    sample_input_ids,
+                    generation_1,
+                )
             text_0, text_1 = self.trained_model.decode([generation_0, generation_1])
             score_0, metrics_0 = self.rewards_and_metrics_function(sample_original_seq, text_0)
             score_1, metrics_1 = self.rewards_and_metrics_function(sample_original_seq, text_1)
@@ -201,28 +202,28 @@ class DPOTrainer:
     def get_batch_policy_loss(self, batch_generations: list[SampleGenerations]) -> torch.Tensor:
         better_seq_model_probabilities = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[1])
+                torch.prod(generation.generation_probabilities[1]).reshape(1)
                 for generation in batch_generations
             ],
             dim=-1,
         )
         worse_seq_model_probabilities = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[0])
+                torch.prod(generation.generation_probabilities[0]).reshape(1)
                 for generation in batch_generations
             ],
             dim=-1,
         )
         better_seq_reference_probabilities = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[1])
+                torch.prod(generation.generation_reference_probabilities[1]).reshape(1)
                 for generation in batch_generations
             ],
             dim=-1,
         )
         worse_seq_reference_probabilities = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[0])
+                torch.prod(generation.generation_reference_probabilities[0]).reshape(1)
                 for generation in batch_generations
             ],
             dim=-1,
@@ -233,7 +234,7 @@ class DPOTrainer:
         worse_seq_logratios = torch.log(worse_seq_model_probabilities) - torch.log(
             worse_seq_reference_probabilities
         )
-        return logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios))
+        return -1 * logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios))
 
     def policy_loss_step(self, policy_loss: torch.Tensor):
         self.trained_model_optimizer.zero_grad()
@@ -275,7 +276,6 @@ class DPOTrainer:
                         nonstandard_metrics.append(metric_name, metrics[metric_name])
 
             policy_loss = self.get_batch_policy_loss(generations)
-            self.policy_loss_step(policy_loss)
             if mode == TRAIN:
                 self.policy_loss_step(policy_loss)
 

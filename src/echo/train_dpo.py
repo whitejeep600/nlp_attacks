@@ -144,7 +144,7 @@ def main(
 
 
 if __name__ == "__main__":
-    echo_params = yaml.safe_load(open("params.yaml"))["src.echo.train_ppo"]
+    echo_params = yaml.safe_load(open("params.yaml"))["src.echo.train_dpo"]
 
     source_model_name = echo_params["source_model_name"]
     similarity_evaluator_name = echo_params["similarity_evaluator_name"]
