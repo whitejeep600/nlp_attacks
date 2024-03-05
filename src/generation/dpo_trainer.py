@@ -272,6 +272,21 @@ class DPOTrainer:
 
             # todo length checks maybe
 
+            generation_metric_keys = generations[0].generation_metrics[0].keys()
+            for metric_key in generation_metric_keys:
+                nonstandard_metrics.append(
+                    metric_key,
+                    float(
+                        mean(
+                            [
+                                single_generation_metrics[metric_key]
+                                for generation in generations
+                                for single_generation_metrics in generation.generation_metrics
+                            ]
+                        )
+                    ),
+                )
+
             for generation in generations:
                 for metrics in generation.generation_metrics:
                     for metric_name in metrics:
