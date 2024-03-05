@@ -287,11 +287,6 @@ class DPOTrainer:
                     ),
                 )
 
-            for generation in generations:
-                for metrics in generation.generation_metrics:
-                    for metric_name in metrics:
-                        nonstandard_metrics.append(metric_name, metrics[metric_name])
-
             policy_loss = self.get_batch_policy_loss(generations)
             if mode == TRAIN:
                 self.policy_loss_step(policy_loss)
