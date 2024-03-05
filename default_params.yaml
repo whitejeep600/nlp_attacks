@@ -24,5 +24,5 @@ src.echo.train_dpo:
   attacker_lr: 1e-4
   beta: 0.1
   save_dir: runs/echo/
-  n_max_train_batches: 1024
+  n_max_train_samples: 1024
   call_parameters_save_path: runs/echo/log.txt
