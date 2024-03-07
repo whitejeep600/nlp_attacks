@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import torch
@@ -77,7 +78,12 @@ class GenerativeBart:
             )
             new_scores = next_one.logits[0][-1, :]
             new_probabilities = torch.softmax(new_scores, dim=-1)
-            next_id = torch.multinomial(new_probabilities, 1, replacement=True)[0]
+            try:
+                next_id = torch.multinomial(new_probabilities, 1, replacement=True)[0]
+            except RuntimeError as e:
+                with open("debug.json") as f:
+                    f.write(json.dumps(new_probabilities.tolist()))
+                raise e
             decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
             probabilities.append(new_probabilities[next_id].reshape(1))
             if next_id == self.bert.generation_config.eos_token_id:
