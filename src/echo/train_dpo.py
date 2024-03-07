@@ -36,7 +36,8 @@ def train(
     n_epochs: int,
     attacker_lr: float,
     beta: float,
-    device: str,
+    trained_model_device: str,
+    reference_model_device: str,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -65,7 +66,8 @@ def train(
         trained_model_optimizer=echo_optimizer,
         beta=beta,
         max_len=max_len,
-        device=device,
+        trained_model_device=trained_model_device,
+        reference_model_device=reference_model_device,
         save_dir=save_dir,
         call_parameters_save_path=call_parameters_save_path,
         params_to_save=params_to_save,
@@ -103,15 +105,17 @@ def main(
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
-        trainer_device = devices[0]
+        trained_model_device = devices[0]
         similarity_evaluator_device = devices[1]
+        reference_model_device = devices[1]
     else:
-        trainer_device = devices[0]
+        trained_model_device = devices[0]
         similarity_evaluator_device = devices[0]
+        reference_model_device = devices[0]
     similarity_evaluator = SimilarityEvaluator(
         similarity_evaluator_name, similarity_evaluator_device
     )
-    echo = GenerativeBart(source_model_name, max_len, trainer_device)
+    echo = GenerativeBart(source_model_name, max_len, trained_model_device)
     train_dataset = SST2Dataset(
         train_split_path,
         echo.tokenizer,
@@ -139,7 +143,8 @@ def main(
         n_epochs,
         attacker_lr,
         beta,
-        trainer_device,
+        trained_model_device,
+        reference_model_device,
         max_len,
         save_dir,
         call_parameters_save_path,

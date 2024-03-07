@@ -54,7 +54,6 @@ class PPOTrainer(Trainer):
             call_parameters_save_path=call_parameters_save_path,
             params_to_save=params_to_save,
             max_len=max_len,
-            device=device,
         )
         self.trained_model = trained_model
         self.rewards_and_metrics_function = rewards_and_metrics_function
@@ -63,6 +62,7 @@ class PPOTrainer(Trainer):
         self.value_model = value_model
         self.trained_model_optimizer = trained_model_optimizer
         self.value_model_optimizer = value_model_optimizer
+        self.device = device
 
     def train(self) -> None:
         self.trained_model.train()

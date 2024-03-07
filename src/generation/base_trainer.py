@@ -26,7 +26,6 @@ class Trainer:
         call_parameters_save_path: Path,
         params_to_save: dict,
         max_len: int,
-        device: str,
     ):
         self.standard_metric_names = standard_metric_names
         self.all_data: dict[str, dict[str, list[np.ndarray]]] = {
@@ -39,7 +38,6 @@ class Trainer:
         self.params_to_save = params_to_save
         self.params_to_save.update({"git_commit_id": get_current_git_commit_id()})
         self.max_len = max_len
-        self.device = device
 
     def train(self) -> None:
         raise NotImplementedError
