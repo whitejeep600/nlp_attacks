@@ -89,7 +89,7 @@ class DPOTrainer(Trainer):
             max_length = self.trained_model.max_length
         batch_inputs = batch_inputs.to(self.trained_model.device)
         all_decoded_ids = (
-            torch.Tensor([[self.trained_model.stop_token], [self.trained_model.stop_token]])
+            torch.Tensor([[self.trained_model.start_token] for _ in range(len(batch_inputs))])
             .int()
             .to(self.trained_model.device)
         )

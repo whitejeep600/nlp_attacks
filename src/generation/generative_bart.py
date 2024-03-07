@@ -16,7 +16,8 @@ class GenerativeBart:
         self.device = device
         self.tokenizer = BartTokenizer.from_pretrained(model_name)
         self.max_length = max_length
-        self.stop_token = self.bert.config.decoder_start_token_id
+        self.stop_token = self.token_to_tokenizer_id("</s>")
+        self.start_token = self.token_to_tokenizer_id("<s>")
 
     def train(self):
         self.bert.train()
