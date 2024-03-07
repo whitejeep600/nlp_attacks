@@ -94,11 +94,11 @@ class DPOTrainer(Trainer):
         batch_input_ids = batch_input_ids.to(self.device)
         all_generations: list[SampleGenerations] = []
         for sample_original_seq, sample_input_ids in zip(batch_original_seqs, batch_input_ids):
-            generation_0, probs_0 = self.trained_model.generate_with_random_sampling(
-                sample_input_ids.unsqueeze(0), self.max_len
+            generation_0, probs_0 = self.trained_model.generate(
+                sample_input_ids.unsqueeze(0), max_length=self.max_len, method="sampling"
             )
-            generation_1, probs_1 = self.trained_model.generate_with_random_sampling(
-                sample_input_ids.unsqueeze(0), self.max_len
+            generation_1, probs_1 = self.trained_model.generate(
+                sample_input_ids.unsqueeze(0), max_length=self.max_len, method="sampling"
             )
             with torch.no_grad():
                 reference_probs_0 = self.reference_model.get_reference_probabilities(

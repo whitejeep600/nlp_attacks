@@ -28,42 +28,16 @@ class GenerativeBart:
     def parameters(self):
         return self.bert.parameters()
 
-    def generate_with_greedy_decoding(
-        self, inputs: torch.Tensor, max_length: int | None = None
-    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    def generate(
+        self, inputs: torch.Tensor, method: str = "sampling", max_length: int | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if method not in ["sampling", "greedy"]:
+            raise ValueError(f"Invalid generation method: {method}")
         if max_length is None:
             max_length = self.max_length
         """
         Return a (sequence, scores) tuple where sequence is a tensor of shape (generation_len)
-        containing the ids of the generated sequence, and scores is a list of len generation_len,
-        whose each element is a tensor of shape [1, vocab_size] containing the predicted token
-        logits for each step.
-
-        """
-        inputs = inputs.to(self.device)
-        decoded = torch.Tensor([[self.bert.config.decoder_start_token_id]]).int().to(self.device)
-        scores: list[torch.Tensor] = []
-        for _ in range(max_length - 1):
-            next_one = self.bert(
-                input_ids=inputs,
-                decoder_input_ids=decoded,
-            )
-            new_scores = next_one.logits[0][-1, :]
-            next_id = torch.argmax(new_scores, dim=-1)
-            decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
-            scores.append(new_scores.unsqueeze(0))
-            if next_id == self.bert.generation_config.eos_token_id:
-                break
-        return decoded.squeeze(0), scores
-
-    def generate_with_random_sampling(
-        self, inputs: torch.Tensor, max_length: int | None = None
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if max_length is None:
-            max_length = self.max_length
-        """
-        As above, but with each next token sampled with its predicted probability,
-        instead of greedy decoding. Also, return a simple tensor of generation
+        containing the ids of the generated sequence, and scores is a tensor of token generation
         probabilities at each step.
 
         """
@@ -76,14 +50,13 @@ class GenerativeBart:
                 decoder_input_ids=decoded,
             )
             new_scores = next_one.logits[0][-1, :]
-            if new_scores.isnan().any().item():
-                print(inputs)
-                print(decoded)
-                exit(2137)
             new_probabilities = torch.softmax(new_scores, dim=-1)
-            next_id = torch.multinomial(new_probabilities, 1, replacement=True)[0]
-            decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
+            if method == "greedy":
+                next_id = torch.argmax(new_scores, dim=-1)
+            else:
+                next_id = torch.multinomial(new_probabilities, 1, replacement=True)[0]
             probabilities.append(new_probabilities[next_id].reshape(1))
+            decoded = torch.cat((decoded, torch.Tensor([[next_id]]).int().to(self.device)), dim=-1)
             if next_id == self.bert.generation_config.eos_token_id:
                 break
         return decoded.squeeze(0), torch.cat(probabilities, dim=-1)
@@ -151,7 +124,7 @@ class GenerativeBart:
             truncation=True,
         )
         input_ids = tokenized_text["input_ids"]
-        output_ids, logits = self.generate_with_greedy_decoding(input_ids, 16)
+        output_ids, probabilities = self.generate(input_ids, 16)
         generated_prefixes = self.decode_prefixes([output_ids])[0]
         generated_sequence = generated_prefixes[-1]
 

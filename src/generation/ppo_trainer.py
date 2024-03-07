@@ -90,15 +90,13 @@ class PPOTrainer(Trainer):
         token_probabilities: list[torch.Tensor] = []
         reference_probabilities: list = []
         for seq in batch:
-            new_ids, scores = self.trained_model.generate_with_greedy_decoding(
-                seq.unsqueeze(0), max_length
+            new_ids, new_token_probabilites = self.trained_model.generate(
+                seq.unsqueeze(0),
+                method="greedy",
+                max_length=max_length,
             )
             new_ids = new_ids.to(self.device)
-            scores = [score.to(self.device) for score in scores]
             generated_ids.append(new_ids)
-            new_token_probabilites = torch.stack(
-                [torch.softmax(scores[i][0], dim=0)[new_ids[i + 1]] for i in range(len(scores))],
-            )
             with torch.no_grad():
                 new_reference_probabilites = self.reference_model.get_reference_probabilities(
                     seq,
