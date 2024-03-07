@@ -5,6 +5,14 @@ import numpy as np
 import torch
 
 
+def get_length_without_padding(t: torch.Tensor, stop_token: int) -> int:
+    stop_token_positions = (t[1:] == stop_token).nonzero()
+    if stop_token_positions.numel() == 0:
+        return len(t)
+    else:
+        return int((t[1:] == stop_token).nonzero()[0][0].item()) + 2
+
+
 def get_available_torch_devices() -> list[str]:
     if torch.cuda.is_available():
         return [f"cuda:{i}" for i in range(torch.cuda.device_count())]

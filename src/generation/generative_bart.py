@@ -4,6 +4,7 @@ import torch
 from transformers import BartForConditionalGeneration, BartTokenizer
 
 from src.generation.value_model import ValueModel
+from src.utils import get_length_without_padding
 
 
 class GenerativeBart:
@@ -18,6 +19,7 @@ class GenerativeBart:
         self.device = device
         self.tokenizer = BartTokenizer.from_pretrained(model_name)
         self.max_length = max_length
+        self.stop_token = self.bert.config.decoder_start_token_id
 
     def train(self):
         self.bert.train()
@@ -27,6 +29,47 @@ class GenerativeBart:
 
     def parameters(self):
         return self.bert.parameters()
+
+    def batch_generate(
+        self, batch_inputs: torch.Tensor, method: str = "sampling", max_length: int | None = None
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        if method not in ["sampling", "greedy"]:
+            raise ValueError(f"Invalid generation method: {method}")
+        if max_length is None:
+            max_length = self.max_length
+        batch_inputs = batch_inputs.to(self.device)
+        decoded = torch.Tensor([[self.stop_token], [self.stop_token]]).int().to(self.device)
+        probabilities: list[list[torch.Tensor]] = [[] for _ in batch_inputs]
+        for _ in range(max_length - 1):
+            next_tokens = self.bert(
+                input_ids=batch_inputs,
+                decoder_input_ids=decoded,
+            )
+            new_scores = next_tokens.logits[:, -1, :]
+            new_probabilities = torch.softmax(new_scores, dim=-1)
+            if method == "greedy":
+                next_ids = torch.argmax(new_scores, dim=-1)
+            else:
+                next_ids = torch.multinomial(new_probabilities, 1, replacement=True)
+            for i in range(len(new_probabilities)):
+                probabilities[i].append(new_probabilities[i][next_ids[i]].reshape(1))
+            decoded = torch.cat((decoded, next_ids), dim=-1)
+            if (next_ids == self.bert.generation_config.eos_token_id).all():
+                break
+        decoded_tensors = [decoded_tensor for decoded_tensor in decoded]
+        probability_tensors = [
+            torch.cat(probability_list, dim=-1) for probability_list in probabilities
+        ]
+        real_lengths = [
+            get_length_without_padding(decoded_tensor, self.stop_token)
+            for decoded_tensor in decoded_tensors
+        ]
+        truncated_ids = [ids[:length] for (ids, length) in zip(decoded_tensors, real_lengths)]
+        truncated_probs = [
+            probabilities[:length]
+            for (probabilities, length) in zip(probability_tensors, real_lengths)
+        ]
+        return truncated_ids, truncated_probs
 
     def generate(
         self, inputs: torch.Tensor, method: str = "sampling", max_length: int | None = None
@@ -42,7 +85,7 @@ class GenerativeBart:
 
         """
         inputs = inputs.to(self.device)
-        decoded = torch.Tensor([[self.bert.config.decoder_start_token_id]]).int().to(self.device)
+        decoded = torch.Tensor([[self.stop_token]]).int().to(self.device)
         probabilities: list[torch.Tensor] = []
         for _ in range(max_length - 1):
             next_one = self.bert(
@@ -124,7 +167,7 @@ class GenerativeBart:
             truncation=True,
         )
         input_ids = tokenized_text["input_ids"]
-        output_ids, probabilities = self.generate(input_ids, 16)
+        output_ids, probabilities = self.generate(input_ids, "greedy", 16)
         generated_prefixes = self.decode_prefixes([output_ids])[0]
         generated_sequence = generated_prefixes[-1]
 

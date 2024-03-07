@@ -94,29 +94,30 @@ class DPOTrainer(Trainer):
         batch_input_ids = batch_input_ids.to(self.device)
         all_generations: list[SampleGenerations] = []
         for sample_original_seq, sample_input_ids in zip(batch_original_seqs, batch_input_ids):
-            generation_0, probs_0 = self.trained_model.generate(
-                sample_input_ids.unsqueeze(0), max_length=self.max_len, method="sampling"
+            generation_ids, probs = self.trained_model.batch_generate(
+                torch.stack((sample_input_ids, sample_input_ids)),
+                max_length=self.max_len,
+                method="sampling",
             )
-            generation_1, probs_1 = self.trained_model.generate(
-                sample_input_ids.unsqueeze(0), max_length=self.max_len, method="sampling"
-            )
+            ids_0, ids_1 = generation_ids
+            probs_0, probs_1 = probs
             with torch.no_grad():
                 reference_probs_0 = self.reference_model.get_reference_probabilities(
                     sample_input_ids,
-                    generation_0,
+                    ids_0,
                 )
                 reference_probs_1 = self.reference_model.get_reference_probabilities(
                     sample_input_ids,
-                    generation_1,
+                    ids_1,
                 )
-            text_0, text_1 = self.trained_model.decode([generation_0, generation_1])
+            text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
             score_0, metrics_0 = self.rewards_and_metrics_function(sample_original_seq, text_0)
             score_1, metrics_1 = self.rewards_and_metrics_function(sample_original_seq, text_1)
             generations = SampleGenerations(
                 prompt=sample_original_seq,
                 prompt_tokens=sample_input_ids,
                 generation_texts=[text_0, text_1],
-                generation_tokens=[generation_0, generation_1],
+                generation_tokens=[ids_0, ids_1],
                 generation_probabilities=[probs_0, probs_1],
                 generation_reference_probabilities=[reference_probs_0, reference_probs_1],
                 generation_scores=[score_0, score_1],
