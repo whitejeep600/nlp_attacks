@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from src.generation.base_trainer import EVAL, MODES, POLICY_LOSS_METRIC, TRAIN, Trainer
 from src.generation.generative_bart import GenerativeBart
-from src.utils import ListDict, get_length_without_padding
+from src.utils import ListDict, get_length_without_padding, sequence_logprob
 
 
 class SampleGenerations:
@@ -195,40 +195,40 @@ class DPOTrainer(Trainer):
         return all_generations
 
     def get_batch_policy_loss(self, batch_generations: list[SampleGenerations]) -> torch.Tensor:
-        better_seq_model_probabilities = torch.cat(
+        better_seq_logprobs = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[1]).reshape(1)
+                sequence_logprob(generation.generation_probabilities[1])
                 for generation in batch_generations
             ],
             dim=-1,
         )
-        worse_seq_model_probabilities = torch.cat(
+        better_seq_reference_logprobs = torch.cat(
             [
-                torch.prod(generation.generation_probabilities[0]).reshape(1)
+                sequence_logprob(generation.generation_reference_probabilities[1])
                 for generation in batch_generations
             ],
             dim=-1,
         )
-        better_seq_reference_probabilities = torch.cat(
+
+        better_seq_logratios = better_seq_logprobs - better_seq_reference_logprobs
+
+        worse_seq_logprobs = torch.cat(
             [
-                torch.prod(generation.generation_reference_probabilities[1]).reshape(1)
+                sequence_logprob(generation.generation_probabilities[0])
                 for generation in batch_generations
             ],
             dim=-1,
         )
-        worse_seq_reference_probabilities = torch.cat(
+        worse_seq_reference_logprobs = torch.cat(
             [
-                torch.prod(generation.generation_reference_probabilities[0]).reshape(1)
+                sequence_logprob(generation.generation_reference_probabilities[0])
                 for generation in batch_generations
             ],
             dim=-1,
         )
-        better_seq_logratios = torch.log(better_seq_model_probabilities) - torch.log(
-            better_seq_reference_probabilities
-        )
-        worse_seq_logratios = torch.log(worse_seq_model_probabilities) - torch.log(
-            worse_seq_reference_probabilities
-        )
+
+        worse_seq_logratios = worse_seq_logprobs - worse_seq_reference_logprobs
+
         return -1 * logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios)).mean()
 
     def policy_loss_step(self, policy_loss: torch.Tensor):

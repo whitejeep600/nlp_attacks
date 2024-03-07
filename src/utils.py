@@ -5,6 +5,10 @@ import numpy as np
 import torch
 
 
+def sequence_logprob(token_probabilities: torch.Tensor) -> torch.Tensor:
+    return torch.sum(torch.log(token_probabilities)).reshape(1)
+
+
 def get_length_without_padding(t: torch.Tensor, stop_token: int) -> int:
     stop_token_positions = (t[1:] == stop_token).nonzero()
     if stop_token_positions.numel() == 0:
