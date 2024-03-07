@@ -158,21 +158,25 @@ class DPOTrainer(Trainer):
         """
         batch_input_ids = batch_input_ids.to(self.device)
         all_generations: list[SampleGenerations] = []
-        for sample_original_seq, sample_input_ids in zip(batch_original_seqs, batch_input_ids):
-            generation_ids, probs, reference_probs = self.batch_generate(
-                torch.stack((sample_input_ids, sample_input_ids)),
-                max_length=self.max_len,
-                method="sampling",
-            )
-            ids_0, ids_1 = generation_ids
-            probs_0, probs_1 = probs
-            reference_probs_0, reference_probs_1 = reference_probs
+        generation_ids, probs, reference_probs = self.batch_generate(
+            torch.repeat_interleave(batch_input_ids, 2, dim=0),
+            max_length=self.max_len,
+            method="sampling",
+        )
+        for batch_index in range(len(generation_ids) // 2):
+            ids_0 = generation_ids[batch_index * 2]
+            ids_1 = generation_ids[batch_index * 2 + 1]
+            probs_0 = probs[batch_index * 2]
+            probs_1 = probs[batch_index * 2 + 1]
+            reference_probs_0 = reference_probs[batch_index * 2]
+            reference_probs_1 = reference_probs[batch_index * 2 + 1]
+            sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
             score_0, metrics_0 = self.rewards_and_metrics_function(sample_original_seq, text_0)
             score_1, metrics_1 = self.rewards_and_metrics_function(sample_original_seq, text_1)
             generations = SampleGenerations(
                 prompt=sample_original_seq,
-                prompt_tokens=sample_input_ids,
+                prompt_tokens=batch_input_ids[batch_index],
                 generation_texts=[text_0, text_1],
                 generation_tokens=[ids_0, ids_1],
                 generation_probabilities=[probs_0, probs_1],
