@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from src.generation.base_trainer import EVAL, MODES, POLICY_LOSS_METRIC, TRAIN, Trainer
 from src.generation.generative_bart import GenerativeBart
-from src.utils import ListDict
+from src.utils import ListDict, get_length_without_padding
 
 
 class SampleGenerations:
@@ -80,6 +80,71 @@ class DPOTrainer(Trainer):
         self.trained_model.eval()
         self.reference_model.eval()
 
+    def batch_generate(
+        self, batch_inputs: torch.Tensor, method: str = "sampling", max_length: int | None = None
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+        if method not in ["sampling", "greedy"]:
+            raise ValueError(f"Invalid generation method: {method}")
+        if max_length is None:
+            max_length = self.trained_model.max_length
+        batch_inputs = batch_inputs.to(self.trained_model.device)
+        all_decoded_ids = (
+            torch.Tensor([[self.trained_model.stop_token], [self.trained_model.stop_token]])
+            .int()
+            .to(self.trained_model.device)
+        )
+        all_probabilities: list[list[torch.Tensor]] = [[] for _ in batch_inputs]
+        all_reference_probabilities: list[list[torch.Tensor]] = [[] for _ in batch_inputs]
+        for _ in range(max_length - 1):
+            new_logits = self.trained_model.bert(
+                input_ids=batch_inputs,
+                decoder_input_ids=all_decoded_ids,
+            ).logits[:, -1, :]
+            with torch.no_grad():
+                new_reference_logits = self.reference_model.bert(
+                    input_ids=batch_inputs,
+                    decoder_input_ids=all_decoded_ids,
+                ).logits[:, -1, :]
+            new_probabilities = torch.softmax(new_logits, dim=-1)
+            new_reference_probabilities = torch.softmax(new_reference_logits, dim=-1)
+            if method == "greedy":
+                next_ids = torch.argmax(new_logits, dim=-1)
+            else:
+                next_ids = torch.multinomial(new_probabilities, 1, replacement=True)
+            for i in range(len(new_probabilities)):
+                all_probabilities[i].append(new_probabilities[i][next_ids[i]].reshape(1))
+                all_reference_probabilities[i].append(
+                    new_reference_probabilities[i][next_ids[i]].reshape(1)
+                )
+            all_decoded_ids = torch.cat((all_decoded_ids, next_ids), dim=-1)
+            if (next_ids == self.trained_model.bert.generation_config.eos_token_id).all():
+                break
+        decoded_id_single_tensors = [decoded_tensor for decoded_tensor in all_decoded_ids]
+        probability_single_tensors = [
+            torch.cat(probability_list, dim=-1) for probability_list in all_probabilities
+        ]
+        reference_probability_single_tensors = [
+            torch.cat(probability_list, dim=-1) for probability_list in all_reference_probabilities
+        ]
+        real_lengths = [
+            get_length_without_padding(decoded_id_single_tensor, self.trained_model.stop_token)
+            for decoded_id_single_tensor in decoded_id_single_tensors
+        ]
+        truncated_decoded_id_single_tensors = [
+            ids[:length] for (ids, length) in zip(decoded_id_single_tensors, real_lengths)
+        ]
+        truncated_probs = [
+            probability_single_tensor[:length]
+            for (probability_single_tensor, length) in zip(probability_single_tensors, real_lengths)
+        ]
+        truncated_reference_probs = [
+            probability_single_tensor[:length]
+            for (probability_single_tensor, length) in zip(
+                reference_probability_single_tensors, real_lengths
+            )
+        ]
+        return truncated_decoded_id_single_tensors, truncated_probs, truncated_reference_probs
+
     def sample_two_generations(
         self,
         batch_input_ids: torch.Tensor,
@@ -94,22 +159,14 @@ class DPOTrainer(Trainer):
         batch_input_ids = batch_input_ids.to(self.device)
         all_generations: list[SampleGenerations] = []
         for sample_original_seq, sample_input_ids in zip(batch_original_seqs, batch_input_ids):
-            generation_ids, probs = self.trained_model.batch_generate(
+            generation_ids, probs, reference_probs = self.batch_generate(
                 torch.stack((sample_input_ids, sample_input_ids)),
                 max_length=self.max_len,
                 method="sampling",
             )
             ids_0, ids_1 = generation_ids
             probs_0, probs_1 = probs
-            with torch.no_grad():
-                reference_probs_0 = self.reference_model.get_reference_probabilities(
-                    sample_input_ids,
-                    ids_0,
-                )
-                reference_probs_1 = self.reference_model.get_reference_probabilities(
-                    sample_input_ids,
-                    ids_1,
-                )
+            reference_probs_0, reference_probs_1 = reference_probs
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
             score_0, metrics_0 = self.rewards_and_metrics_function(sample_original_seq, text_0)
             score_1, metrics_1 = self.rewards_and_metrics_function(sample_original_seq, text_1)
