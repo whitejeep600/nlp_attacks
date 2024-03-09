@@ -115,7 +115,7 @@ class DPOTrainer(Trainer):
             new_probabilities = torch.softmax(new_logits, dim=-1)
             new_reference_probabilities = torch.softmax(new_reference_logits, dim=-1)
             if method == "greedy":
-                next_ids = torch.argmax(new_logits, dim=-1)
+                next_ids = torch.argmax(new_logits, dim=-1)[:, None]
             else:
                 next_ids = torch.multinomial(new_probabilities, 1, replacement=True)
             for i in range(len(new_probabilities)):
@@ -168,7 +168,7 @@ class DPOTrainer(Trainer):
         generation_ids, probs, reference_probs = self.batch_generate(
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
-            method="sampling",
+            method="greedy",
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
