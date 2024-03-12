@@ -1,0 +1,20 @@
+# This is a general class representing models that output binary classification scores for
+# a piece of text. In the context of this repository, they are the models that will be subjected
+# to attacks (victim models).
+import torch
+from textattack.models.helpers import WordCNNForClassification
+
+
+# use cnn-sst2?
+class Classifier:
+    def __init__(self):
+        pass
+
+    def classify(self, text: str) -> torch.Tensor:
+        raise NotImplementedError
+
+
+class SentimentClassifier(Classifier):
+    def __init__(self):
+        super().__init__()
+        self.model = WordCNNForClassification.from_pretrained("cnn-sst2")

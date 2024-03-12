@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 100
-target-version = ['py310']
+target-version = ['py39']
 include = '\.py$'
 exclude = '''
 /(
@@ -29,7 +29,7 @@ name = "PyPI"
 priority = "primary"
 
 [tool.poetry.dependencies]
-python = "~3.10"
+python = "~3.9"
 torch = { version = "2.1.1+cpu", source = "torchcpu" }
 
 black = "*"
@@ -38,11 +38,11 @@ isort = "*"
 mypy = "*"
 pandas = "*"
 pyyaml = "*"
-huggingface-hub = "0.15.1"
-transformers = "*"
+huggingface-hub = "0.19.4"
+transformers = "4.38"
+datasets = "2.18"
 sentence_transformers = "*"
 matplotlib = "*"
 nltk = "*"
 protobuf = "*"
-datasets = "*"
-textattack = "*"
+textattack = "0.3.9"
