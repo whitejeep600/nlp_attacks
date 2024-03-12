@@ -22,7 +22,8 @@ def harmonic_mean(a: float, b: float) -> float:
 
 
 def calculate_reward(similarity_score: float, negativity_score: float) -> float:
-    return harmonic_mean(similarity_score, negativity_score)
+    return negativity_score
+    #return harmonic_mean(similarity_score, negativity_score)
 
 
 def get_similarity_scores_and_nonstandard_metrics(
