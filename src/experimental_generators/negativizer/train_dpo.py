@@ -183,7 +183,7 @@ def main(
 
 if __name__ == "__main__":
     echo_params = yaml.safe_load(open("params.yaml"))[
-        "src.experimental_generators.negativiser.train_dpo"
+        "src.experimental_generators.negativizer.train_dpo"
     ]
 
     source_model_name = echo_params["source_model_name"]

@@ -27,7 +27,7 @@ src.echo.train_dpo:
   n_max_train_samples: 1024
   call_parameters_save_path: runs/echo/log.txt
 
-src.experimental_generators.negativiser.train_dpo:
+src.experimental_generators.negativizer.train_dpo:
   source_model_name: eugenesiow/bart-paraphrase
   source_model_weights_path: checkpoints/echo/run_86/generator_ckpt.pt
   similarity_evaluator_name: flax-sentence-embeddings/all_datasets_v4_MiniLM-L6

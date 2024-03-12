@@ -98,7 +98,7 @@ class Trainer:
     def conclude_epoch(self) -> None:
         all_metric_names = list(self.all_data.keys())
         average_metrics = {
-            mode: {key: self.all_data[mode][key][-1].mean() for key in all_metric_names}
+            mode: {key: self.all_data[key][mode][-1].mean() for key in all_metric_names}
             for mode in MODES
         }
         print(f"Epoch {self.epochs_elapsed}.\n")
