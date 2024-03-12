@@ -17,6 +17,14 @@ from src.generation.similarity_evaluator import SimilarityEvaluator
 from src.utils import get_available_torch_devices
 
 
+def harmonic_mean(a: float, b: float) -> float:
+    return 2 / (1 / a + 1 / b)
+
+
+def calculate_reward(similarity_score: float, negativity_score: float) -> float:
+    return harmonic_mean(similarity_score, negativity_score)
+
+
 def get_similarity_scores_and_nonstandard_metrics(
     prompt: str,
     generations: list[str],
@@ -37,7 +45,7 @@ def get_similarity_scores_and_nonstandard_metrics(
         for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
     ]
     target_metrics = [
-        (similarity_score + negativity_score) / 2
+        calculate_reward(similarity_score + negativity_score)
         for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
     ]
 

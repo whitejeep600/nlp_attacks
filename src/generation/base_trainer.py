@@ -101,7 +101,7 @@ class Trainer:
             mode: {key: self.all_data[key][mode][-1].mean() for key in all_metric_names}
             for mode in MODES
         }
-        print(f"Epoch {self.epochs_elapsed}.\n")
+        print(f"\nEpoch {self.epochs_elapsed}.\n")
         for mode in MODES:
             print(f"This epoch's {mode} stats are as follows:\n" f"{average_metrics[mode]}\n")
         self.epochs_elapsed += 1
