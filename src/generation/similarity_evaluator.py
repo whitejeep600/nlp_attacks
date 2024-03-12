@@ -14,10 +14,22 @@ class SimilarityEvaluator:
         embeddings = [self.model.encode(text, convert_to_tensor=True) for text in [text1, text2]]
         return torch.cosine_similarity(embeddings[0], embeddings[1], dim=0).item()
 
-    def evaluate_prefixes(self, prefixes: list[str], text: str) -> list[float]:
-        whole_reference_encoding = self.model.encode(text, convert_to_tensor=True)
+    def batch_evaluate(self, texts1: list[str], texts2: list[str]) -> list[float]:
+        encodings_1 = self.model.encode(
+            texts1, convert_to_tensor=True, batch_size=get_ceil_power_of_2(len(texts1))
+        )
+        encodings_2 = self.model.encode(
+            texts2, convert_to_tensor=True, batch_size=get_ceil_power_of_2(len(texts1))
+        )
+        return [
+            torch.cosine_similarity(encoding_1, encoding_2, dim=0).item()
+            for (encoding_1, encoding_2) in zip(encodings_1, encodings_2)
+        ]
+
+    def evaluate_many_to_one(self, many: list[str], one: str) -> list[float]:
+        whole_reference_encoding = self.model.encode(one, convert_to_tensor=True)
         prefix_encodings = self.model.encode(
-            prefixes, convert_to_tensor=True, batch_size=get_ceil_power_of_2(len(prefixes))
+            many, convert_to_tensor=True, batch_size=get_ceil_power_of_2(len(many))
         )
 
         return [
@@ -39,7 +51,7 @@ def get_similarity_scores(
     device: str,
 ) -> list[torch.Tensor]:
     similarity_scores = [
-        torch.Tensor(similarity_evaluator.evaluate_prefixes(sample_prefixes, original_seq)).to(
+        torch.Tensor(similarity_evaluator.evaluate_many_to_one(sample_prefixes, original_seq)).to(
             device
         )
         for sample_prefixes, original_seq in zip(batch_prefixes, original_seqs)

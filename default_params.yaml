@@ -16,12 +16,27 @@ src.echo.train:
 src.echo.train_dpo:
   source_model_name: eugenesiow/bart-paraphrase
   similarity_evaluator_name: flax-sentence-embeddings/all_datasets_v4_MiniLM-L6
-  train_split_path: data/sst2/validation.csv
+  train_split_path: data/sst2/train.csv
   eval_split_path: data/sst2/validation.csv
   max_len: 16
   batch_size: 1
   n_epochs: 4
-  attacker_lr: 1e-4
+  attacker_lr: 1e-5
+  beta: 0.1
+  save_dir: runs/echo/
+  n_max_train_samples: 1024
+  call_parameters_save_path: runs/echo/log.txt
+
+src.experimental_generators.negativiser.train_dpo:
+  source_model_name: eugenesiow/bart-paraphrase
+  source_model_weights_path: checkpoints/echo/run_86/generator_ckpt.pt
+  similarity_evaluator_name: flax-sentence-embeddings/all_datasets_v4_MiniLM-L6
+  train_split_path: data/sst2/train.csv
+  eval_split_path: data/sst2/validation.csv
+  max_len: 16
+  batch_size: 1
+  n_epochs: 4
+  attacker_lr: 1e-5
   beta: 0.1
   save_dir: runs/echo/
   n_max_train_samples: 1024

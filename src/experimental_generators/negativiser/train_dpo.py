@@ -9,6 +9,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.classifiers.classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
@@ -20,22 +21,32 @@ def get_similarity_scores_and_nonstandard_metrics(
     prompt: str,
     generations: list[str],
     similarity_evaluator: SimilarityEvaluator,
+    sentiment_classifier: SentimentClassifier,
 ) -> tuple[list[float], list[dict[str, float]]]:
     similarity_scores = similarity_evaluator.evaluate_many_to_one(generations, prompt)
+    negativity_scores = [
+        float(score.item()) for score in sentiment_classifier.evaluate_texts(generations)[:, 0]
+    ]
 
     stats = [
         {
             "similarity_score": similarity_score,
+            "negativity_score": negativity_score,
         }
-        for similarity_score in similarity_scores
+        for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
+    ]
+    target_metrics = [
+        (similarity_score + negativity_score) / 2
+        for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
     ]
 
-    return similarity_scores, stats
+    return target_metrics, stats
 
 
 def train(
     echo: GenerativeBart,
     similarity_evaluator: SimilarityEvaluator,
+    sentiment_classifier: SentimentClassifier,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     n_epochs: int,
@@ -64,6 +75,7 @@ def train(
     reward_function = partial(
         get_similarity_scores_and_nonstandard_metrics,
         similarity_evaluator=similarity_evaluator,
+        sentiment_classifier=sentiment_classifier,
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
@@ -107,6 +119,7 @@ def main(
     call_parameters_save_path: Path,
     params_to_save: dict,
     n_max_train_samples: int | None = None,
+    source_model_weights_path: Path | None = None,
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
@@ -117,18 +130,27 @@ def main(
         trained_model_device = devices[0]
         similarity_evaluator_device = devices[0]
         reference_model_device = devices[0]
+
     similarity_evaluator = SimilarityEvaluator(
         similarity_evaluator_name, similarity_evaluator_device
     )
-    echo = GenerativeBart(source_model_name, max_len, trained_model_device)
+
+    sentiment_classifier = SentimentClassifier(similarity_evaluator_device)
+
+    trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
+    if source_model_weights_path is not None:
+        trained_model.bert.load_state_dict(
+            torch.load(source_model_weights_path, map_location=torch.device(trained_model_device))
+        )
+
     train_dataset = SST2Dataset(
         train_split_path,
-        echo.tokenizer,
+        trained_model.tokenizer,
         max_len,
     )
     eval_dataset = SST2Dataset(
         eval_split_path,
-        echo.tokenizer,
+        trained_model.tokenizer,
         max_len,
     )
 
@@ -141,8 +163,9 @@ def main(
         n_max_train_batches = None
 
     train(
-        echo,
+        trained_model,
         similarity_evaluator,
+        sentiment_classifier,
         train_dataloader,
         eval_dataloader,
         n_epochs,
@@ -159,9 +182,12 @@ def main(
 
 
 if __name__ == "__main__":
-    echo_params = yaml.safe_load(open("params.yaml"))["src.echo.train_dpo"]
+    echo_params = yaml.safe_load(open("params.yaml"))[
+        "src.experimental_generators.negativiser.train_dpo"
+    ]
 
     source_model_name = echo_params["source_model_name"]
+    source_model_weights_path = Path(echo_params["source_model_weights_path"])
     similarity_evaluator_name = echo_params["similarity_evaluator_name"]
 
     train_split_path = Path(echo_params["train_split_path"])
@@ -191,4 +217,5 @@ if __name__ == "__main__":
         call_parameters_save_path,
         echo_params,
         n_max_train_samples,
+        source_model_weights_path,
     )

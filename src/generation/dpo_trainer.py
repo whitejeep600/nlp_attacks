@@ -170,7 +170,7 @@ class DPOTrainer(Trainer):
         generation_ids, probs, reference_probs = self.batch_generate(
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
-            method="greedy",
+            method="sampling",
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
@@ -181,8 +181,9 @@ class DPOTrainer(Trainer):
             reference_probs_1 = reference_probs[batch_index * 2 + 1]
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
-            score_0, metrics_0 = self.rewards_and_metrics_function(sample_original_seq, text_0)
-            score_1, metrics_1 = self.rewards_and_metrics_function(sample_original_seq, text_1)
+            scores, metrics = self.rewards_and_metrics_function(
+                sample_original_seq, [text_0, text_1]
+            )
             generations = SampleGenerations(
                 prompt=sample_original_seq,
                 prompt_tokens=batch_input_ids[batch_index],
@@ -190,8 +191,8 @@ class DPOTrainer(Trainer):
                 generation_tokens=[ids_0, ids_1],
                 generation_probabilities=[probs_0, probs_1],
                 generation_reference_probabilities=[reference_probs_0, reference_probs_1],
-                generation_scores=[score_0, score_1],
-                generation_metrics=[metrics_0, metrics_1],
+                generation_scores=scores,
+                generation_metrics=metrics,
             )
             all_generations.append(generations)
         return all_generations

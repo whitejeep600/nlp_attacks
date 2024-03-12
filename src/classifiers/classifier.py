@@ -5,7 +5,6 @@ import torch
 from textattack.models.helpers import WordCNNForClassification
 
 
-# use cnn-sst2?
 class Classifier:
     def __init__(self):
         pass
@@ -15,6 +14,15 @@ class Classifier:
 
 
 class SentimentClassifier(Classifier):
-    def __init__(self):
+    def __init__(self, device: str):
         super().__init__()
         self.model = WordCNNForClassification.from_pretrained("cnn-sst2")
+        self.device = device
+        self.model.to(device)
+        self.model.eval()
+
+    def evaluate_texts(self, texts: list[str]) -> torch.Tensor:
+        with torch.no_grad():
+            return self.model(
+                torch.IntTensor(self.model.tokenizer.batch_encode(texts)).to(self.device)
+            )

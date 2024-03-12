@@ -70,14 +70,6 @@ class Trainer:
         for metric_name in self.standard_metric_names:
             if metric_name not in epoch_metrics:
                 warnings.warn(f"Metric '{metric_name}' was not passed for this iteration!")
-        average_epoch_metrics = {
-            key: float(mean(epoch_metrics[key])) for key in epoch_metrics.keys()
-        }
-        print(
-            f"Epoch {self.epochs_elapsed},"
-            f" this epoch's {mode} stats, as follows:\n"
-            f"{average_epoch_metrics}\n"
-        )
 
     def add_nonstandard_epoch_metrics(
         self, epoch_metrics: dict[str, list[float]], mode: str
@@ -104,6 +96,14 @@ class Trainer:
         df.to_csv(current_save_path)
 
     def conclude_epoch(self) -> None:
+        all_metric_names = list(self.all_data.keys())
+        average_metrics = {
+            mode: {key: self.all_data[mode][key][-1].mean() for key in all_metric_names}
+            for mode in MODES
+        }
+        print(f"Epoch {self.epochs_elapsed}.\n")
+        for mode in MODES:
+            print(f"This epoch's {mode} stats are as follows:\n" f"{average_metrics[mode]}\n")
         self.epochs_elapsed += 1
 
     def save_summary(self, best_epoch_no: int) -> None:
