@@ -21,8 +21,13 @@ class SentimentClassifier(Classifier):
         self.model.to(device)
         self.model.eval()
 
-    def evaluate_texts(self, texts: list[str]) -> torch.Tensor:
+    def evaluate_texts(self, texts: list[str], return_probs=False) -> torch.Tensor:
         with torch.no_grad():
-            return self.model(
+            logits = self.model(
                 torch.IntTensor(self.model.tokenizer.batch_encode(texts)).to(self.device)
             )
+            if not return_probs:
+                return logits
+            else:
+                probs = torch.softmax(logits, dim=1)
+                return probs

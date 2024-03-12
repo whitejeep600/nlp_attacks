@@ -25,7 +25,8 @@ def get_similarity_scores_and_nonstandard_metrics(
 ) -> tuple[list[float], list[dict[str, float]]]:
     similarity_scores = similarity_evaluator.evaluate_many_to_one(generations, prompt)
     negativity_scores = [
-        float(score.item()) for score in sentiment_classifier.evaluate_texts(generations)[:, 0]
+        float(score.item())
+        for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
     ]
 
     stats = [
