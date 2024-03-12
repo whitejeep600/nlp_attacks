@@ -45,7 +45,7 @@ def get_similarity_scores_and_nonstandard_metrics(
         for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
     ]
     target_metrics = [
-        calculate_reward(similarity_score + negativity_score)
+        calculate_reward(similarity_score, negativity_score)
         for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
     ]
 
