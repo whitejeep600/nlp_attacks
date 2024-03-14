@@ -5,7 +5,6 @@ import textattack
 import torch
 import transformers
 from textattack.model_args import HUGGINGFACE_MODELS
-from textattack.models.helpers import WordCNNForClassification
 
 
 class Classifier:

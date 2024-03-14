@@ -17,13 +17,12 @@ from src.generation.similarity_evaluator import SimilarityEvaluator
 from src.utils import get_available_torch_devices
 
 
-def harmonic_mean(a: float, b: float) -> float:
-    return 2 / (1 / a + 1 / b)
+def harmonic_mean(a: float, b: float, weight_a: float = 1, weight_b: float = 1) -> float:
+    return (weight_a + weight_b) / (weight_a / a + weight_b / b)
 
 
 def calculate_reward(similarity_score: float, negativity_score: float) -> float:
-    return negativity_score
-    #return harmonic_mean(similarity_score, negativity_score)
+    return harmonic_mean(similarity_score, negativity_score, weight_b=4)
 
 
 def get_similarity_scores_and_nonstandard_metrics(
