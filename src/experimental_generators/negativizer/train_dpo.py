@@ -9,11 +9,10 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.classifiers.classifier import SentimentClassifier
+from src.classifiers.classifier import EntailmentClassifier, SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
-from src.generation.similarity_evaluator import SimilarityEvaluator
 from src.utils import get_available_torch_devices
 
 
@@ -21,17 +20,19 @@ def harmonic_mean(a: float, b: float, weight_a: float = 1, weight_b: float = 1) 
     return (weight_a + weight_b) / (weight_a / a + weight_b / b)
 
 
-def calculate_reward(similarity_score: float, negativity_score: float) -> float:
-    return harmonic_mean(similarity_score, negativity_score, weight_b=4)
+def calculate_reward(entailment_score: float, negativity_score: float) -> float:
+    return harmonic_mean(entailment_score, negativity_score)
 
 
 def get_similarity_scores_and_nonstandard_metrics(
     prompt: str,
     generations: list[str],
-    similarity_evaluator: SimilarityEvaluator,
+    entailment_classifier: EntailmentClassifier,
     sentiment_classifier: SentimentClassifier,
 ) -> tuple[list[float], list[dict[str, float]]]:
-    similarity_scores = similarity_evaluator.evaluate_many_to_one(generations, prompt)
+    entailment_scores = entailment_classifier.evaluate_text_pairs(
+        [(prompt, generation) for generation in generations]
+    )[:, entailment_classifier.entailment_code].tolist()
     negativity_scores = [
         float(score.item())
         for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
@@ -39,14 +40,14 @@ def get_similarity_scores_and_nonstandard_metrics(
 
     stats = [
         {
-            "similarity_score": similarity_score,
+            "entailment_score": entailment_score,
             "negativity_score": negativity_score,
         }
-        for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
+        for (entailment_score, negativity_score) in zip(entailment_scores, negativity_scores)
     ]
     target_metrics = [
-        calculate_reward(similarity_score, negativity_score)
-        for (similarity_score, negativity_score) in zip(similarity_scores, negativity_scores)
+        calculate_reward(entailment_score, negativity_score)
+        for (entailment_score, negativity_score) in zip(entailment_scores, negativity_scores)
     ]
 
     return target_metrics, stats
@@ -54,7 +55,7 @@ def get_similarity_scores_and_nonstandard_metrics(
 
 def train(
     echo: GenerativeBart,
-    similarity_evaluator: SimilarityEvaluator,
+    entailment_classifier: EntailmentClassifier,
     sentiment_classifier: SentimentClassifier,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
@@ -79,11 +80,11 @@ def train(
 
     echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
 
-    similarity_evaluator.eval()
+    entailment_classifier.eval()
 
     reward_function = partial(
         get_similarity_scores_and_nonstandard_metrics,
-        similarity_evaluator=similarity_evaluator,
+        entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
     )
     dpo_trainer = DPOTrainer(
@@ -116,7 +117,6 @@ def train(
 
 def main(
     source_model_name: str,
-    similarity_evaluator_name: str,
     train_split_path: Path,
     eval_split_path: Path,
     max_len: int,
@@ -133,18 +133,16 @@ def main(
     devices = get_available_torch_devices()
     if len(devices) > 1:
         trained_model_device = devices[0]
-        similarity_evaluator_device = devices[1]
+        entailment_classifier_device = devices[1]
         reference_model_device = devices[1]
     else:
         trained_model_device = devices[0]
-        similarity_evaluator_device = devices[0]
+        entailment_classifier_device = devices[0]
         reference_model_device = devices[0]
 
-    similarity_evaluator = SimilarityEvaluator(
-        similarity_evaluator_name, similarity_evaluator_device
-    )
+    entailment_classifier = EntailmentClassifier(entailment_classifier_device)
 
-    sentiment_classifier = SentimentClassifier(similarity_evaluator_device)
+    sentiment_classifier = SentimentClassifier(entailment_classifier_device)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
     if source_model_weights_path is not None:
@@ -173,7 +171,7 @@ def main(
 
     train(
         trained_model,
-        similarity_evaluator,
+        entailment_classifier,
         sentiment_classifier,
         train_dataloader,
         eval_dataloader,
@@ -197,7 +195,6 @@ if __name__ == "__main__":
 
     source_model_name = echo_params["source_model_name"]
     source_model_weights_path = Path(echo_params["source_model_weights_path"])
-    similarity_evaluator_name = echo_params["similarity_evaluator_name"]
 
     train_split_path = Path(echo_params["train_split_path"])
     eval_split_path = Path(echo_params["eval_split_path"])
@@ -214,7 +211,6 @@ if __name__ == "__main__":
 
     main(
         source_model_name,
-        similarity_evaluator_name,
         train_split_path,
         eval_split_path,
         max_len,
