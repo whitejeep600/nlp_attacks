@@ -1,27 +1,40 @@
 from __future__ import annotations
 
+from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.classifiers.classifier import EntailmentClassifier, SentimentClassifier
+from src.classifiers.classifier import (
+    EntailmentClassifier,
+    GrammaticalityEvaluator,
+    SentimentClassifier,
+)
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices
 
 
-def harmonic_mean(a: float, b: float, weight_a: float = 1, weight_b: float = 1) -> float:
-    return (weight_a + weight_b) / (weight_a / a + weight_b / b)
+def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
+    numbers_array = np.array(numbers)
+    if weights is None:
+        weights_array = np.ones_like(numbers_array)
+    else:
+        weights_array = np.array(weights)
+    return weights_array.sum() / (weights_array / numbers_array).sum()
 
 
-def calculate_reward(entailment_score: float, negativity_score: float) -> float:
-    return harmonic_mean(entailment_score, negativity_score)
+def calculate_reward(
+    entailment_score: float, negativity_score: float, grammaticality_score: float
+) -> float:
+    return harmonic_mean([entailment_score, negativity_score, grammaticality_score])
 
 
 def get_similarity_scores_and_nonstandard_metrics(
@@ -29,25 +42,55 @@ def get_similarity_scores_and_nonstandard_metrics(
     generations: list[str],
     entailment_classifier: EntailmentClassifier,
     sentiment_classifier: SentimentClassifier,
+    grammaticality_evaluator: GrammaticalityEvaluator,
 ) -> tuple[list[float], list[dict[str, float]]]:
-    entailment_scores = entailment_classifier.evaluate_text_pairs(
-        [(prompt, generation) for generation in generations]
-    )[:, entailment_classifier.entailment_code].tolist()
-    negativity_scores = [
-        float(score.item())
-        for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
-    ]
+
+    def get_entailment():
+        entailment_scores = entailment_classifier.evaluate_text_pairs(
+            [(prompt, generation) for generation in generations]
+        )[:, entailment_classifier.entailment_code].tolist()
+        return entailment_scores
+
+    def get_negativity():
+        negativity_scores = [
+            float(score.item())
+            for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
+        ]
+        return negativity_scores
+
+    def get_grammaticality():
+        grammaticality_scores = [
+            float(score.item())
+            for score in grammaticality_evaluator.evaluate_texts(generations, return_probs=True)[
+                :, 1
+            ]
+        ]
+        return grammaticality_scores
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        entailment_calculation = executor.submit(get_entailment)
+        negativity_calculation = executor.submit(get_negativity)
+        grammaticality_calculation = executor.submit(get_grammaticality)
+
+    entailment_scores = entailment_calculation.result()
+    negativity_scores = negativity_calculation.result()
+    grammaticality_scores = grammaticality_calculation.result()
 
     stats = [
         {
             "entailment_score": entailment_score,
             "negativity_score": negativity_score,
+            "grammaticality_score": grammaticality_score,
         }
-        for (entailment_score, negativity_score) in zip(entailment_scores, negativity_scores)
+        for (entailment_score, negativity_score, grammaticality_score) in zip(
+            entailment_scores, negativity_scores, grammaticality_scores
+        )
     ]
     target_metrics = [
-        calculate_reward(entailment_score, negativity_score)
-        for (entailment_score, negativity_score) in zip(entailment_scores, negativity_scores)
+        calculate_reward(entailment_score, negativity_score, grammaticality_score)
+        for (entailment_score, negativity_score, grammaticality_score) in zip(
+            entailment_scores, negativity_scores, grammaticality_scores
+        )
     ]
 
     return target_metrics, stats
@@ -57,6 +100,7 @@ def train(
     echo: GenerativeBart,
     entailment_classifier: EntailmentClassifier,
     sentiment_classifier: SentimentClassifier,
+    grammaticality_evaluator: GrammaticalityEvaluator,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     n_epochs: int,
@@ -86,6 +130,7 @@ def train(
         get_similarity_scores_and_nonstandard_metrics,
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
+        grammaticality_evaluator=grammaticality_evaluator,
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
@@ -143,6 +188,7 @@ def main(
     entailment_classifier = EntailmentClassifier(entailment_classifier_device)
 
     sentiment_classifier = SentimentClassifier(entailment_classifier_device)
+    grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
     if source_model_weights_path is not None:
@@ -173,6 +219,7 @@ def main(
         trained_model,
         entailment_classifier,
         sentiment_classifier,
+        grammaticality_evaluator,
         train_dataloader,
         eval_dataloader,
         n_epochs,
