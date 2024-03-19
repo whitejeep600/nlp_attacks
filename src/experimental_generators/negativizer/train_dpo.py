@@ -72,8 +72,8 @@ def get_similarity_scores_and_nonstandard_metrics(
         gan_logits = gan_discriminator.forward(all_sentences_shuffled)
         discriminator_accuracy = (
             (
-                torch.argmax(gan_logits, dim=1)
-                == torch.Tensor(all_labels_shuffled).to(gan_discriminator.device)
+                torch.argmax(gan_logits.cpu(), dim=1)
+                == torch.Tensor(all_labels_shuffled)
             )
             .float()
             .mean()
