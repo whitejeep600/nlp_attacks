@@ -14,9 +14,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.entailment_evaluator import EntailmentEvaluator
-from src.gan.gan_discriminator import GANDiscriminator
 from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
+from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices
@@ -67,11 +67,16 @@ def get_similarity_scores_and_nonstandard_metrics(
         shuffle(shuffling)
         reverse_shuffling = np.zeros_like(shuffling)
         reverse_shuffling[shuffling] = np.arange(len(shuffling))
-        all_sentences = [all_sentences[i] for i in shuffling]
-        all_labels = [all_labels[i] for i in shuffling]
-        gan_logits = gan_discriminator.forward(all_sentences)
+        all_sentences_shuffled = [all_sentences[i] for i in shuffling]
+        all_labels_shuffled = [all_labels[i] for i in shuffling]
+        gan_logits = gan_discriminator.forward(all_sentences_shuffled)
+        discriminator_accuracy = (
+            (torch.argmax(gan_logits, dim=1) == torch.Tensor(all_labels_shuffled)).float().mean()
+        )
         loss_function = nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_function(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
+        loss = loss_function(
+            gan_logits, torch.LongTensor(all_labels_shuffled).to(gan_discriminator.device)
+        )
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
@@ -93,7 +98,7 @@ def get_similarity_scores_and_nonstandard_metrics(
             # the last one was the prompt
         ]
 
-        return gan_fooling_factors, loss.item()
+        return gan_fooling_factors, discriminator_accuracy
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         entailment_calculation = executor.submit(get_entailment)
@@ -102,14 +107,14 @@ def get_similarity_scores_and_nonstandard_metrics(
 
     entailment_scores = entailment_calculation.result()
     negativity_scores = negativity_calculation.result()
-    grammaticality_scores, discriminator_loss = grammaticality_calculation.result()
+    grammaticality_scores, discriminator_accuracy = grammaticality_calculation.result()
 
     stats = [
         {
             "entailment_score": entailment_score,
             "negativity_score": negativity_score,
             "grammaticality_score": grammaticality_score,
-            "gan_discriminator_loss": discriminator_loss,
+            "gan_discriminator_accuracy": discriminator_accuracy,
         }
         for (entailment_score, negativity_score, grammaticality_score) in zip(
             entailment_scores, negativity_scores, grammaticality_scores
