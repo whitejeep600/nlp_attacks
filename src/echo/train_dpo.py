@@ -9,10 +9,10 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.classifiers.similarity_evaluator import SimilarityEvaluator
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
-from src.generation.similarity_evaluator import SimilarityEvaluator
 from src.utils import get_available_torch_devices
 
 

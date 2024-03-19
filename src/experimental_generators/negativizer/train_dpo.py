@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -7,19 +8,21 @@ from pathlib import Path
 import numpy as np
 import torch
 import yaml
+from numpy.random import shuffle
+from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.classifiers.classifier import (
-    EntailmentEvaluator,
-    GrammaticalityEvaluator,
-    SentimentClassifier,
-)
+from src.classifiers.entailment_evaluator import EntailmentEvaluator
+from src.classifiers.gan_discriminator import GANDiscriminator
+from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices
+
+GAN_GENERATED_LABEL = 1
 
 
 def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
@@ -42,7 +45,7 @@ def get_similarity_scores_and_nonstandard_metrics(
     generations: list[str],
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
-    grammaticality_evaluator: GrammaticalityEvaluator,
+    gan_discriminator: GANDiscriminator,
 ) -> tuple[list[float], list[dict[str, float]]]:
 
     def get_entailment():
@@ -59,13 +62,31 @@ def get_similarity_scores_and_nonstandard_metrics(
         return negativity_scores
 
     def get_grammaticality():
-        grammaticality_scores = [
+        all_sentences = generations + [prompt]
+        all_labels = [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
+        shuffling = np.random.permutation(len(all_sentences))
+        shuffle(shuffling)
+        reverse_shuffling = np.zeros_like(shuffling)
+        reverse_shuffling[shuffling] = np.arange(len(shuffling))
+        all_sentences = [all_sentences[i] for i in shuffling]
+        all_labels = [all_labels[i] for i in shuffling]
+        gan_logits = gan_discriminator.forward(all_sentences)
+        loss_function = nn.CrossEntropyLoss()
+        loss = loss_function(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
+        gan_discriminator.optimizer.zero_grad()
+        loss.backward()
+        gan_discriminator.optimizer.step()
+        gan_non_generated_all_probabilities = [
             float(score.item())
-            for score in grammaticality_evaluator.evaluate_texts(generations, return_probs=True)[
-                :, 1
-            ]
+            for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
         ]
-        return grammaticality_scores
+        gan_fooling_factors = [
+            gan_non_generated_all_probabilities[i]
+            for i in range(len(gan_non_generated_all_probabilities))
+            if all_labels[i] == GAN_GENERATED_LABEL
+        ]
+        unshuffled_gan_fooling_factors = [gan_fooling_factors[i] for i in reverse_shuffling]
+        return unshuffled_gan_fooling_factors, loss.item()
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         entailment_calculation = executor.submit(get_entailment)
@@ -74,13 +95,14 @@ def get_similarity_scores_and_nonstandard_metrics(
 
     entailment_scores = entailment_calculation.result()
     negativity_scores = negativity_calculation.result()
-    grammaticality_scores = grammaticality_calculation.result()
+    grammaticality_scores, discriminator_loss = grammaticality_calculation.result()
 
     stats = [
         {
             "entailment_score": entailment_score,
             "negativity_score": negativity_score,
             "grammaticality_score": grammaticality_score,
+            "gan_discriminator_loss": discriminator_loss,
         }
         for (entailment_score, negativity_score, grammaticality_score) in zip(
             entailment_scores, negativity_scores, grammaticality_scores
@@ -100,7 +122,7 @@ def train(
     echo: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
-    grammaticality_evaluator: GrammaticalityEvaluator,
+    gan_discriminator: GANDiscriminator,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     n_epochs: int,
@@ -130,7 +152,7 @@ def train(
         get_similarity_scores_and_nonstandard_metrics,
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
-        grammaticality_evaluator=grammaticality_evaluator,
+        gan_discriminator=gan_discriminator,
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
@@ -188,7 +210,7 @@ def main(
     entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
 
     sentiment_classifier = SentimentClassifier(entailment_classifier_device)
-    grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
+    grammaticality_evaluator = GANDiscriminator(entailment_classifier_device, max_len)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
     if source_model_weights_path is not None:
