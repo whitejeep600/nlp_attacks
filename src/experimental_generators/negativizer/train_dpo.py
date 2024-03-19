@@ -189,6 +189,7 @@ def main(
     batch_size: int,
     n_epochs: int,
     attacker_lr: float,
+    gan_lr: float,
     beta: float,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -209,7 +210,7 @@ def main(
     entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
 
     sentiment_classifier = SentimentClassifier(entailment_classifier_device)
-    grammaticality_evaluator = GANDiscriminator(entailment_classifier_device, max_len)
+    grammaticality_evaluator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
     if source_model_weights_path is not None:
@@ -271,6 +272,7 @@ if __name__ == "__main__":
     batch_size = int(echo_params["batch_size"])
     n_epochs = int(echo_params["n_epochs"])
     attacker_lr = float(echo_params["attacker_lr"])
+    gan_lr = float(echo_params["gan_lr"])
     beta = float(echo_params["beta"])
     n_max_train_samples: int | None = echo_params["n_max_train_samples"]
 
@@ -285,6 +287,7 @@ if __name__ == "__main__":
         batch_size,
         n_epochs,
         attacker_lr,
+        gan_lr,
         beta,
         save_dir,
         call_parameters_save_path,

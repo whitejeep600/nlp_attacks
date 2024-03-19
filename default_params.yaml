@@ -36,6 +36,7 @@ src.experimental_generators.negativizer.train_dpo:
   batch_size: 1
   n_epochs: 4
   attacker_lr: 1e-5
+  gan_lr: 1e-3
   beta: 0.1
   save_dir: runs/echo/
   n_max_train_samples: 1024

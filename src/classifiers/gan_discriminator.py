@@ -5,10 +5,9 @@ from transformers import AdamW, AutoTokenizer, BertModel
 
 
 class GANDiscriminator(nn.Module):
-    def __init__(self, device: str, max_length: int):
+    def __init__(self, device: str, max_length: int, lr: float):
         super().__init__()
         model_name = "bert-base-uncased"
-        lr = 1e-4
         self.model = BertModel.from_pretrained(model_name)
         self.device = device
         self.model.to(device)
