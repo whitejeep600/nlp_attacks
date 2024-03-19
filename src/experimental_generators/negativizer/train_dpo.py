@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.entailment_evaluator import EntailmentEvaluator
-from src.classifiers.gan_discriminator import GANDiscriminator
+from src.gan.gan_discriminator import GANDiscriminator
 from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
