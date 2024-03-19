@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -71,7 +70,7 @@ def get_similarity_scores_and_nonstandard_metrics(
         all_sentences = [all_sentences[i] for i in shuffling]
         all_labels = [all_labels[i] for i in shuffling]
         gan_logits = gan_discriminator.forward(all_sentences)
-        loss_function = nn.CrossEntropyLoss()
+        loss_function = nn.CrossEntropyLoss(reduction="mean")
         loss = loss_function(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
@@ -80,8 +79,12 @@ def get_similarity_scores_and_nonstandard_metrics(
             float(score.item())
             for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
         ]
+        # Multiplying by 2 because these scores will be close to 0.5 for a good generator and
+        # discriminator - discriminator's accuracy will be close to random guessing. However,
+        # scores around 0.5 will have an unduly large influence on the reward expressed
+        # as a harmonic mean of 3 goals, if the other two are - and this is the goal - close to 1.
         gan_fooling_factors = [
-            gan_non_generated_all_probabilities[reverse_shuffling[i]]
+            2 * gan_non_generated_all_probabilities[reverse_shuffling[i]]
             for i in range(len(gan_non_generated_all_probabilities))
             if all_labels[i] == GAN_GENERATED_LABEL
         ]
