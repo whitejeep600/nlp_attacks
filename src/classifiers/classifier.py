@@ -69,7 +69,7 @@ class GrammaticalityEvaluator(Classifier):
             return probs
 
 
-class EntailmentClassifier(Classifier):
+class EntailmentEvaluator(Classifier):
     def __init__(self, device: str):
         super().__init__()
 

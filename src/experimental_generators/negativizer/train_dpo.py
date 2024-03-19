@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.classifier import (
-    EntailmentClassifier,
+    EntailmentEvaluator,
     GrammaticalityEvaluator,
     SentimentClassifier,
 )
@@ -40,14 +40,14 @@ def calculate_reward(
 def get_similarity_scores_and_nonstandard_metrics(
     prompt: str,
     generations: list[str],
-    entailment_classifier: EntailmentClassifier,
+    entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     grammaticality_evaluator: GrammaticalityEvaluator,
 ) -> tuple[list[float], list[dict[str, float]]]:
 
     def get_entailment():
         entailment_scores = entailment_classifier.evaluate_text_pairs(
-            [(prompt, generation) for generation in generations]
+            [(prompt, generation) for generation in generations], return_probs=True
         )[:, entailment_classifier.entailment_code].tolist()
         return entailment_scores
 
@@ -98,7 +98,7 @@ def get_similarity_scores_and_nonstandard_metrics(
 
 def train(
     echo: GenerativeBart,
-    entailment_classifier: EntailmentClassifier,
+    entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     grammaticality_evaluator: GrammaticalityEvaluator,
     train_dataloader: DataLoader,
@@ -185,7 +185,7 @@ def main(
         entailment_classifier_device = devices[0]
         reference_model_device = devices[0]
 
-    entailment_classifier = EntailmentClassifier(entailment_classifier_device)
+    entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
 
     sentiment_classifier = SentimentClassifier(entailment_classifier_device)
     grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
