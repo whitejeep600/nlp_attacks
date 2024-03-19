@@ -81,12 +81,11 @@ def get_similarity_scores_and_nonstandard_metrics(
             for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
         ]
         gan_fooling_factors = [
-            gan_non_generated_all_probabilities[i]
+            gan_non_generated_all_probabilities[reverse_shuffling[i]]
             for i in range(len(gan_non_generated_all_probabilities))
             if all_labels[i] == GAN_GENERATED_LABEL
         ]
-        unshuffled_gan_fooling_factors = [gan_fooling_factors[i] for i in reverse_shuffling]
-        return unshuffled_gan_fooling_factors, loss.item()
+        return gan_fooling_factors, loss.item()
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         entailment_calculation = executor.submit(get_entailment)
