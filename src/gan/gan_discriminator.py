@@ -12,8 +12,8 @@ class GANDiscriminator(nn.Module):
         self.device = device
         self.model.to(device)
         self.model.train()
-        self.linear_to_logit = Linear(self.model.config.hidden_size, 2)
-        self.linear_to_logit.to(device)
+        self.linear_to_logits = Linear(self.model.config.hidden_size, 2)
+        self.linear_to_logits.to(device)
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.optimizer = AdamW(self.parameters(), lr=lr)
@@ -32,5 +32,5 @@ class GANDiscriminator(nn.Module):
         )
 
         pooled = bert_output.pooler_output
-        logits = self.linear_to_logit(pooled)
+        logits = self.linear_to_logits(pooled)
         return logits
