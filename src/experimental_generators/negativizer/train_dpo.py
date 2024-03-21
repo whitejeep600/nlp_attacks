@@ -69,12 +69,10 @@ def get_similarity_scores_and_nonstandard_metrics(
         reverse_shuffling[shuffling] = np.arange(len(shuffling))
         all_sentences_shuffled = [all_sentences[i] for i in shuffling]
         all_labels_shuffled = [all_labels[i] for i in shuffling]
-        gan_logits = gan_discriminator.forward(all_sentences_shuffled)
+        batch = gan_discriminator.prepare_batch(all_sentences_shuffled)
+        gan_logits = gan_discriminator.forward(batch)
         discriminator_accuracy = (
-            (
-                torch.argmax(gan_logits.cpu(), dim=1)
-                == torch.Tensor(all_labels_shuffled)
-            )
+            (torch.argmax(gan_logits.cpu(), dim=1) == torch.Tensor(all_labels_shuffled))
             .float()
             .mean()
         )
@@ -82,17 +80,19 @@ def get_similarity_scores_and_nonstandard_metrics(
         loss = loss_function(
             gan_logits, torch.LongTensor(all_labels_shuffled).to(gan_discriminator.device)
         )
-        print(torch.autograd.grad(loss, list(gan_discriminator.model.parameters())[0], retain_graph=True, create_graph=True)[0].max())
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
-        print(list(gan_discriminator.model.parameters())[0].grad.max())
+        print(list(gan_discriminator.module.model.parameters())[0].grad.max())
         gan_non_generated_all_probabilities_shuffled = [
             float(score.item())
             for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
         ]
         print(all_sentences_shuffled)
         print(gan_non_generated_all_probabilities_shuffled)
+        print(all_labels_shuffled)
+        print(loss.item())
+        print("\n")
         gan_non_generated_all_probabilities = [
             gan_non_generated_all_probabilities_shuffled[i] for i in reverse_shuffling
         ]
@@ -200,7 +200,7 @@ def train(
             dpo_trainer.save_trained_models()
 
     dpo_trainer.save_stuff(best_epoch)
-    torch.save(gan_discriminator.state_dict(), save_dir / "gan_ckpt.pt")
+    torch.save(gan_discriminator.module.state_dict(), save_dir / "gan_ckpt.pt")
 
 
 def main(
