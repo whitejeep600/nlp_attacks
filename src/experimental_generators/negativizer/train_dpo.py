@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import yaml
-from numpy.random import shuffle
 from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
@@ -45,57 +44,47 @@ def get_similarity_scores_and_nonstandard_metrics(
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     gan_discriminator: GANDiscriminator,
+    loss_function,
 ) -> tuple[list[float], list[dict[str, float]]]:
 
     def get_entailment():
-        entailment_scores = entailment_classifier.evaluate_text_pairs(
-            [(prompt, generation) for generation in generations], return_probs=True
-        )[:, entailment_classifier.entailment_code].tolist()
-        return entailment_scores
+        # entailment_scores = entailment_classifier.evaluate_text_pairs(
+        #     [(prompt, generation) for generation in generations], return_probs=True
+        # )[:, entailment_classifier.entailment_code].tolist()
+        # return entailment_scores
+        return 0, 0
 
     def get_negativity():
-        negativity_scores = [
-            float(score.item())
-            for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
-        ]
-        return negativity_scores
+        # negativity_scores = [
+        #     float(score.item())
+        #     for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
+        # ]
+        # return negativity_scores
+        return 0, 0
 
     def get_grammaticality():
         all_sentences = generations + [prompt]
         all_labels = [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
-        shuffling = np.random.permutation(len(all_sentences))
-        shuffle(shuffling)
-        reverse_shuffling = np.zeros_like(shuffling)
-        reverse_shuffling[shuffling] = np.arange(len(shuffling))
-        all_sentences_shuffled = [all_sentences[i] for i in shuffling]
-        all_labels_shuffled = [all_labels[i] for i in shuffling]
-        batch = gan_discriminator.prepare_batch(all_sentences_shuffled)
+        batch = gan_discriminator.prepare_batch(all_sentences)
         gan_logits = gan_discriminator.forward(batch)
         discriminator_accuracy = (
-            (torch.argmax(gan_logits.cpu(), dim=1) == torch.Tensor(all_labels_shuffled))
-            .float()
-            .mean()
+            (torch.argmax(gan_logits.cpu(), dim=1) == torch.Tensor(all_labels)).float().mean()
         )
-        loss_function = nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_function(
-            gan_logits, torch.LongTensor(all_labels_shuffled).to(gan_discriminator.device)
-        )
+        loss = loss_function(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
         print(list(gan_discriminator.module.model.parameters())[0].grad.max())
-        gan_non_generated_all_probabilities_shuffled = [
+        gan_non_generated_all_probabilities = [
             float(score.item())
             for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
         ]
-        print(all_sentences_shuffled)
-        print(gan_non_generated_all_probabilities_shuffled)
-        print(all_labels_shuffled)
+        print(all_sentences)
+        print(gan_non_generated_all_probabilities)
+        print(all_labels)
         print(loss.item())
         print("\n")
-        gan_non_generated_all_probabilities = [
-            gan_non_generated_all_probabilities_shuffled[i] for i in reverse_shuffling
-        ]
+
         # Multiplying by 2 because these scores will be close to 0.5 for a good generator and
         # discriminator - discriminator's accuracy will be close to random guessing. However,
         # scores around 0.5 will have an unduly large influence on the reward expressed
@@ -173,6 +162,7 @@ def train(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
+        loss_function=nn.CrossEntropyLoss(reduction="mean"),
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
