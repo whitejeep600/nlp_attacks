@@ -65,13 +65,13 @@ def get_similarity_scores_and_nonstandard_metrics(
         all_sentences = generations + [prompt]
         all_labels = torch.IntTensor(
             [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
-        )
+        ).to(gan_discriminator.device)
         batch = gan_discriminator.prepare_batch(all_sentences)
         gan_logits = gan_discriminator.forward(batch)
         discriminator_accuracy = float(
             (torch.argmax(gan_logits, dim=1) == torch.Tensor(all_labels)).float().mean()
         )
-        loss = gan_loss(gan_logits, all_labels.to(gan_discriminator.device))
+        loss = gan_loss(gan_logits, all_labels)
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
