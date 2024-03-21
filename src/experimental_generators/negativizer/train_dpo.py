@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import yaml
 from torch import nn
+from torch.nn.modules.loss import _Loss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -44,33 +45,33 @@ def get_similarity_scores_and_nonstandard_metrics(
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     gan_discriminator: GANDiscriminator,
-    loss_function,
+    gan_loss: _Loss,
 ) -> tuple[list[float], list[dict[str, float]]]:
 
     def get_entailment():
-        # entailment_scores = entailment_classifier.evaluate_text_pairs(
-        #     [(prompt, generation) for generation in generations], return_probs=True
-        # )[:, entailment_classifier.entailment_code].tolist()
-        # return entailment_scores
-        return 0, 0
+        entailment_scores = entailment_classifier.evaluate_text_pairs(
+            [(prompt, generation) for generation in generations], return_probs=True
+        )[:, entailment_classifier.entailment_code].tolist()
+        return entailment_scores
 
     def get_negativity():
-        # negativity_scores = [
-        #     float(score.item())
-        #     for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
-        # ]
-        # return negativity_scores
-        return 0, 0
+        negativity_scores = [
+            float(score.item())
+            for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
+        ]
+        return negativity_scores
 
     def get_grammaticality():
         all_sentences = generations + [prompt]
-        all_labels = [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
+        all_labels = torch.IntTensor(
+            [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
+        ).to(gan_discriminator.device)
         batch = gan_discriminator.prepare_batch(all_sentences)
         gan_logits = gan_discriminator.forward(batch)
-        discriminator_accuracy = (
-            (torch.argmax(gan_logits.cpu(), dim=1) == torch.Tensor(all_labels)).float().mean()
+        discriminator_accuracy = float(
+            (torch.argmax(gan_logits, dim=1) == torch.Tensor(all_labels)).float().mean()
         )
-        loss = loss_function(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
+        loss = gan_loss(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
@@ -162,7 +163,7 @@ def train(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
-        loss_function=nn.CrossEntropyLoss(reduction="mean"),
+        loss_function=nn.CrossEntropyLoss(reduction="mean", weight=torch.Tensor([2, 1])),
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,

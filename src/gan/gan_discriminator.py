@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 from torch.nn import Linear
-from transformers import AdamW, AutoTokenizer, BertModel
+from torch.optim import AdamW
+from transformers import AutoTokenizer, BertModel
 
 
 class GanDiscriminatorModule(nn.Module):
