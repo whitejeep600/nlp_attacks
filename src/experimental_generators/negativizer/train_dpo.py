@@ -75,26 +75,16 @@ def get_similarity_scores_and_nonstandard_metrics(
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
-        print(list(gan_discriminator.module.model.parameters())[0].grad.max())
-        gan_non_generated_all_probabilities = [
-            float(score.item())
-            for score in torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL]
-        ]
-        print(all_sentences)
-        print(gan_non_generated_all_probabilities)
-        print(all_labels)
-        print(loss.item())
-        print("\n")
 
         # Multiplying by 2 because these scores will be close to 0.5 for a good generator and
         # discriminator - discriminator's accuracy will be close to random guessing. However,
         # scores around 0.5 will have an unduly large influence on the reward expressed
         # as a harmonic mean of 3 goals, if the other two are - and this is the goal - close to 1.
-        gan_fooling_factors = [
-            2 * gan_non_generated_all_probabilities[i]
-            for i in range(len(gan_non_generated_all_probabilities) - 1)
-            # the last one was the prompt
-        ]
+        # Also not taking the last one, because the last element of the batch was the prompt.
+
+        gan_fooling_factors = (
+            2 * torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL][:-1]
+        ).tolist()
 
         return gan_fooling_factors, discriminator_accuracy
 
@@ -163,7 +153,9 @@ def train(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
-        gan_loss=nn.CrossEntropyLoss(reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)),
+        gan_loss=nn.CrossEntropyLoss(
+            reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
+        ),
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
