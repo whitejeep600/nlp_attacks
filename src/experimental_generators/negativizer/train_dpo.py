@@ -65,13 +65,13 @@ def get_similarity_scores_and_nonstandard_metrics(
         all_sentences = generations + [prompt]
         all_labels = torch.IntTensor(
             [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
-        ).to(gan_discriminator.device)
+        )
         batch = gan_discriminator.prepare_batch(all_sentences)
         gan_logits = gan_discriminator.forward(batch)
         discriminator_accuracy = float(
             (torch.argmax(gan_logits, dim=1) == torch.Tensor(all_labels)).float().mean()
         )
-        loss = gan_loss(gan_logits, torch.LongTensor(all_labels).to(gan_discriminator.device))
+        loss = gan_loss(gan_logits, all_labels.to(gan_discriminator.device))
         gan_discriminator.optimizer.zero_grad()
         loss.backward()
         gan_discriminator.optimizer.step()
@@ -163,7 +163,7 @@ def train(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
-        loss_function=nn.CrossEntropyLoss(reduction="mean", weight=torch.Tensor([2, 1])),
+        gan_loss=nn.CrossEntropyLoss(reduction="mean", weight=torch.Tensor([2, 1])),
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
