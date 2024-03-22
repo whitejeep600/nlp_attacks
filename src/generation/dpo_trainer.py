@@ -266,8 +266,6 @@ class DPOTrainer(Trainer):
             original_seqs = batch["original_seq"]
             generations = self.sample_two_generations(input_ids, original_seqs)
 
-            # todo length checks maybe
-
             generation_metric_keys = generations[0].generation_metrics[0].keys()
             for metric_key in generation_metric_keys:
                 nonstandard_metrics.append(
@@ -315,14 +313,17 @@ class DPOTrainer(Trainer):
             },
             mode,
         )
+        nonstandard_metric_dicts: dict[str, list[float]] = {
+            list_name: nonstandard_metrics[list_name]
+            for list_name in nonstandard_metrics.lists.keys()
+        }
         self.add_nonstandard_epoch_metrics(
-            {
-                list_name: nonstandard_metrics[list_name]
-                for list_name in nonstandard_metrics.lists.keys()
-            },
+            nonstandard_metric_dicts,
             mode,
         )
         if mode == EVAL:
-            self.save_generated_eval_sentences(all_original_seqs, all_generated_sentences)
+            self.save_generated_eval_sentences(
+                all_original_seqs, all_generated_sentences, nonstandard_metric_dicts
+            )
 
         return mean_generation_score

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import time
 import warnings
@@ -87,12 +89,21 @@ class Trainer:
             self.all_data[metric_name][mode].append(np.array(new_metrics))
 
     def save_generated_eval_sentences(
-        self, original_sentences: list[str], generated_sentences: list[str]
+        self,
+        original_sentences: list[str],
+        generated_sentences: list[str],
+        metrics: dict[str, list[float]] | None = None,
     ) -> None:
         generated_sentences_path = self.save_dir / "generated_sentences"
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
         current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
-        df = pd.DataFrame({"original": original_sentences, "generated": generated_sentences})
+        dict_to_save: dict[str, list[str] | list[float]] = {
+            "original": original_sentences,
+            "generated": generated_sentences,
+        }
+        if metrics is not None:
+            dict_to_save.update(metrics)
+        df = pd.DataFrame(dict_to_save)
         df.to_csv(current_save_path)
 
     def conclude_epoch(self) -> None:
@@ -112,7 +123,7 @@ class Trainer:
 
         summary_path = self.save_dir / "summary.txt"
         best_epoch_stats = {
-            key: float(mean(self.all_data[key][EVAL][best_epoch_no]))
+            key: round(float(mean(self.all_data[key][EVAL][best_epoch_no])), 3)
             for key in self.all_data.keys()
         }
         summary = (

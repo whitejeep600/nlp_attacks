@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.entailment_evaluator import EntailmentEvaluator
+from src.classifiers.grammaticality_evaluator import GrammaticalityEvaluator
 from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
@@ -34,9 +35,14 @@ def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> f
 
 
 def calculate_reward(
-    entailment_score: float, negativity_score: float, grammaticality_score: float
+    entailment_score: float,
+    negativity_score: float,
+    gan_naturalness_score: float,
+    grammaticality_score: float,
 ) -> float:
-    return harmonic_mean([entailment_score, negativity_score, grammaticality_score])
+    return harmonic_mean(
+        [entailment_score, negativity_score, gan_naturalness_score, grammaticality_score]
+    )
 
 
 def get_similarity_scores_and_nonstandard_metrics(
@@ -44,6 +50,7 @@ def get_similarity_scores_and_nonstandard_metrics(
     generations: list[str],
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
+    grammaticality_evaluator: GrammaticalityEvaluator,
     gan_discriminator: GANDiscriminator,
     gan_loss: _Loss,
 ) -> tuple[list[float], list[dict[str, float]]]:
@@ -62,6 +69,15 @@ def get_similarity_scores_and_nonstandard_metrics(
         return negativity_scores
 
     def get_grammaticality():
+        grammaticality_scores = [
+            float(score.item())
+            for score in grammaticality_evaluator.evaluate_texts(generations, return_probs=True)[
+                :, 1
+            ]
+        ]
+        return grammaticality_scores
+
+    def get_gan_naturalness():
         all_sentences = generations + [prompt]
         all_labels = torch.LongTensor(
             [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
@@ -88,30 +104,40 @@ def get_similarity_scores_and_nonstandard_metrics(
 
         return gan_fooling_factors, discriminator_accuracy
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         entailment_calculation = executor.submit(get_entailment)
         negativity_calculation = executor.submit(get_negativity)
+        gan_naturalness_calculation = executor.submit(get_gan_naturalness)
         grammaticality_calculation = executor.submit(get_grammaticality)
 
     entailment_scores = entailment_calculation.result()
     negativity_scores = negativity_calculation.result()
-    grammaticality_scores, discriminator_accuracy = grammaticality_calculation.result()
+    gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
+    grammaticality_scores = grammaticality_calculation.result()
 
     stats = [
         {
             "entailment_score": entailment_score,
             "negativity_score": negativity_score,
-            "grammaticality_score": grammaticality_score,
+            "gan_naturalness_score": gan_naturalness_scores,
             "gan_discriminator_accuracy": discriminator_accuracy,
+            "grammaticality_score": grammaticality_scores,
         }
-        for (entailment_score, negativity_score, grammaticality_score) in zip(
-            entailment_scores, negativity_scores, grammaticality_scores
+        for (entailment_score, negativity_score, grammaticality_score, grammaticality_score) in zip(
+            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
         )
     ]
     target_metrics = [
-        calculate_reward(entailment_score, negativity_score, grammaticality_score)
-        for (entailment_score, negativity_score, grammaticality_score) in zip(
-            entailment_scores, negativity_scores, grammaticality_scores
+        calculate_reward(
+            entailment_score, negativity_score, gan_naturalness_score, grammaticality_score
+        )
+        for (
+            entailment_score,
+            negativity_score,
+            gan_naturalness_score,
+            grammaticality_score,
+        ) in zip(
+            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
         )
     ]
 
@@ -122,6 +148,7 @@ def train(
     echo: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
+    grammaticality_evaluator: GrammaticalityEvaluator,
     gan_discriminator: GANDiscriminator,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
@@ -148,14 +175,18 @@ def train(
 
     entailment_classifier.eval()
 
+    # Weighted loss to balance the fact that in training batches there are two generations
+    # for one sampled sentence. This will stop working if GAN_GENERATED_LABEL is not 1.
+    gan_loss = nn.CrossEntropyLoss(
+        reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
+    )
     reward_function = partial(
         get_similarity_scores_and_nonstandard_metrics,
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
+        grammaticality_evaluator=grammaticality_evaluator,
         gan_discriminator=gan_discriminator,
-        gan_loss=nn.CrossEntropyLoss(
-            reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
-        ),
+        gan_loss=gan_loss,
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
@@ -215,7 +246,8 @@ def main(
     entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
 
     sentiment_classifier = SentimentClassifier(entailment_classifier_device)
-    grammaticality_evaluator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
+    grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
+    gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
     if source_model_weights_path is not None:
@@ -247,6 +279,7 @@ def main(
         entailment_classifier,
         sentiment_classifier,
         grammaticality_evaluator,
+        gan_discriminator,
         train_dataloader,
         eval_dataloader,
         n_epochs,
