@@ -86,7 +86,11 @@ class DPOTrainer(Trainer):
         self.reference_model.eval()
 
     def batch_generate(
-        self, batch_inputs: torch.Tensor, method: str = "sampling", max_length: int | None = None
+        self,
+        batch_inputs: torch.Tensor,
+        method: str = "sampling",
+        max_length: int | None = None,
+        temperature: float = 1.0,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
         if method not in ["sampling", "greedy"]:
             raise ValueError(f"Invalid generation method: {method}")
@@ -114,11 +118,11 @@ class DPOTrainer(Trainer):
                     .logits[:, -1, :]
                     .to(self.trained_model_device)
                 )
-            new_probabilities = torch.softmax(new_logits, dim=-1)
-            new_reference_probabilities = torch.softmax(new_reference_logits, dim=-1)
+            new_probabilities = torch.softmax(new_logits / temperature, dim=-1)
+            new_reference_probabilities = torch.softmax(new_reference_logits / temperature, dim=-1)
             if method == "greedy":
                 next_ids = torch.argmax(new_logits, dim=-1)[:, None]
-            else:
+            else:  # method == "sampling":
                 next_ids = torch.multinomial(new_probabilities, 1, replacement=True)
             for i in range(len(new_probabilities)):
                 all_probabilities[i].append(new_probabilities[i][next_ids[i]].reshape(1))
@@ -171,6 +175,7 @@ class DPOTrainer(Trainer):
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
             method="sampling",
+            temperature=0.5,
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
