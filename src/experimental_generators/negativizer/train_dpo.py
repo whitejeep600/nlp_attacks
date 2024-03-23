@@ -40,8 +40,9 @@ def calculate_reward(
     gan_naturalness_score: float,
     grammaticality_score: float,
 ) -> float:
-    return harmonic_mean(
-        [entailment_score, negativity_score, gan_naturalness_score, grammaticality_score]
+    gan_naturalness_score = min(1.0, gan_naturalness_score)
+    return gan_naturalness_score * harmonic_mean(
+        [entailment_score, negativity_score, grammaticality_score], weights=[1, 4, 1]
     )
 
 
