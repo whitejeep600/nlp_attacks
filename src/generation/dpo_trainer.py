@@ -175,7 +175,7 @@ class DPOTrainer(Trainer):
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
             method="sampling",
-            temperature=0.5,
+            temperature=0.7,
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
@@ -258,7 +258,8 @@ class DPOTrainer(Trainer):
 
         epoch_policy_losses: list[float] = []
         epoch_generation_scores: list[float] = []
-        nonstandard_metrics = ListDict()
+        batch_nonstandard_metrics = ListDict()
+        generated_sentence_metrics_to_save: dict[str, list[float]] = {}
 
         for batch_no, batch in tqdm(
             enumerate(dataloader),
@@ -273,7 +274,7 @@ class DPOTrainer(Trainer):
 
             generation_metric_keys = generations[0].generation_metrics[0].keys()
             for metric_key in generation_metric_keys:
-                nonstandard_metrics.append(
+                batch_nonstandard_metrics.append(
                     metric_key,
                     float(
                         mean(
@@ -308,6 +309,12 @@ class DPOTrainer(Trainer):
                 all_generated_sentences += [
                     generation.generation_texts[0] for generation in generations
                 ]
+                generated_sentence_metrics_to_save = {
+                    metric_name: [
+                        generation.generation_metrics[0][metric_name] for generation in generations
+                    ]
+                    for metric_name in batch_nonstandard_metrics.lists.keys()
+                }
             if batch_no == n_max_batches:
                 break
 
@@ -319,8 +326,8 @@ class DPOTrainer(Trainer):
             mode,
         )
         nonstandard_metric_dicts: dict[str, list[float]] = {
-            list_name: nonstandard_metrics[list_name]
-            for list_name in nonstandard_metrics.lists.keys()
+            list_name: batch_nonstandard_metrics[list_name]
+            for list_name in batch_nonstandard_metrics.lists.keys()
         }
         self.add_nonstandard_epoch_metrics(
             nonstandard_metric_dicts,
@@ -328,7 +335,7 @@ class DPOTrainer(Trainer):
         )
         if mode == EVAL:
             self.save_generated_eval_sentences(
-                all_original_seqs, all_generated_sentences, nonstandard_metric_dicts
+                all_original_seqs, all_generated_sentences, generated_sentence_metrics_to_save
             )
 
         return mean_generation_score
