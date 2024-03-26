@@ -175,7 +175,7 @@ class DPOTrainer(Trainer):
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
             method="sampling",
-            temperature=0.7,
+            temperature=1,
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
