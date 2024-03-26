@@ -122,7 +122,7 @@ def get_similarity_scores_and_nonstandard_metrics(
             "negativity_score": negativity_score,
             "gan_naturalness_score": gan_naturalness_score,
             "gan_discriminator_accuracy": discriminator_accuracy,
-            "grammaticality_score": grammaticality_scores,
+            "grammaticality_score": grammaticality_score,
         }
         for (entailment_score, negativity_score, gan_naturalness_score, grammaticality_score) in zip(
             entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
