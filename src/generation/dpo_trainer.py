@@ -259,7 +259,7 @@ class DPOTrainer(Trainer):
         epoch_policy_losses: list[float] = []
         epoch_generation_scores: list[float] = []
         batch_nonstandard_metrics = ListDict()
-        generated_sentence_metrics_to_save: dict[str, list[float]] = {}
+        generated_sentence_metrics_to_save = ListDict()
 
         for batch_no, batch in tqdm(
             enumerate(dataloader),
@@ -309,15 +309,12 @@ class DPOTrainer(Trainer):
                 all_generated_sentences += [
                     generation.generation_texts[0] for generation in generations
                 ]
-                generated_sentence_metrics_to_save.update(
-                    {
-                        metric_name: [
+                for metric_name in batch_nonstandard_metrics.lists.keys():
+                    for generation in generations:
+                        generated_sentence_metrics_to_save.append(
+                            metric_name,
                             generation.generation_metrics[0][metric_name]
-                            for generation in generations
-                        ]
-                        for metric_name in batch_nonstandard_metrics.lists.keys()
-                    }
-                )
+                        )
             if batch_no == n_max_batches:
                 break
 

@@ -10,7 +10,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from numpy import mean
 
-from src.utils import get_current_git_commit_id
+from src.utils import get_current_git_commit_id, ListDict
 
 TRAIN = "train"
 EVAL = "eval"
@@ -92,7 +92,7 @@ class Trainer:
         self,
         original_sentences: list[str],
         generated_sentences: list[str],
-        metrics: dict[str, list[float]] | None = None,
+        metrics: ListDict | None = None,
     ) -> None:
         generated_sentences_path = self.save_dir / "generated_sentences"
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
@@ -102,7 +102,11 @@ class Trainer:
             "generated": generated_sentences,
         }
         if metrics is not None:
-            dict_to_save.update(metrics)
+            dict_to_save.update(
+                {
+                    metric_name: metrics[metric_name] for metric_name in metrics.lists.keys()
+                }
+            )
         df = pd.DataFrame(dict_to_save)
         df.to_csv(current_save_path)
 
