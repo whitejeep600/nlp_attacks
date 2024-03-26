@@ -41,9 +41,7 @@ def calculate_reward(
     grammaticality_score: float,
 ) -> float:
     gan_naturalness_score = min(1.0, gan_naturalness_score)
-    return gan_naturalness_score * harmonic_mean(
-        [entailment_score, negativity_score, grammaticality_score]
-    )
+    return min(entailment_score, negativity_score, gan_naturalness_score, grammaticality_score)
 
 
 def get_similarity_scores_and_nonstandard_metrics(
@@ -124,7 +122,12 @@ def get_similarity_scores_and_nonstandard_metrics(
             "gan_discriminator_accuracy": discriminator_accuracy,
             "grammaticality_score": grammaticality_score,
         }
-        for (entailment_score, negativity_score, gan_naturalness_score, grammaticality_score) in zip(
+        for (
+            entailment_score,
+            negativity_score,
+            gan_naturalness_score,
+            grammaticality_score,
+        ) in zip(
             entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
         )
     ]

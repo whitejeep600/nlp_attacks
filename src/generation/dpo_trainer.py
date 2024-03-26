@@ -312,8 +312,7 @@ class DPOTrainer(Trainer):
                 for metric_name in batch_nonstandard_metrics.lists.keys():
                     for generation in generations:
                         generated_sentence_metrics_to_save.append(
-                            metric_name,
-                            generation.generation_metrics[0][metric_name]
+                            metric_name, generation.generation_metrics[0][metric_name]
                         )
             if batch_no == n_max_batches:
                 break

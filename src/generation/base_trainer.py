@@ -10,7 +10,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from numpy import mean
 
-from src.utils import get_current_git_commit_id, ListDict
+from src.utils import ListDict, get_current_git_commit_id
 
 TRAIN = "train"
 EVAL = "eval"
@@ -103,9 +103,7 @@ class Trainer:
         }
         if metrics is not None:
             dict_to_save.update(
-                {
-                    metric_name: metrics[metric_name] for metric_name in metrics.lists.keys()
-                }
+                {metric_name: metrics[metric_name] for metric_name in metrics.lists.keys()}
             )
         df = pd.DataFrame(dict_to_save)
         df.to_csv(current_save_path)
