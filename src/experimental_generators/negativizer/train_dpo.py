@@ -18,11 +18,17 @@ from src.classifiers.grammaticality_evaluator import GrammaticalityEvaluator
 from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
-from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
+from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import get_available_torch_devices
+from src.utils import get_available_torch_devices, get_next_run_subdir_name
 
 GAN_GENERATED_LABEL = 1
+
+ENTAILMENT = "entailment_score"
+NEGATIVITY = "negativity_score"
+NATURALNESS = "gan_naturalness_score"
+GRAMMATICALITY = "grammaticality_score"
+GAN_ACCURACY = "gan_discriminator_accuracy"
 
 
 def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
@@ -44,52 +50,78 @@ def calculate_reward(
     return min(entailment_score, negativity_score, gan_naturalness_score, grammaticality_score)
 
 
-def get_similarity_scores_and_nonstandard_metrics(
-    prompt: str,
-    generations: list[str],
-    entailment_classifier: EntailmentEvaluator,
-    sentiment_classifier: SentimentClassifier,
-    grammaticality_evaluator: GrammaticalityEvaluator,
-    gan_discriminator: GANDiscriminator,
-    gan_loss: _Loss,
-) -> tuple[list[float], list[dict[str, float]]]:
+class NegativizerMetricCalculator(RewardCalculator):
+    def __init__(
+        self,
+        entailment_classifier: EntailmentEvaluator,
+        sentiment_classifier: SentimentClassifier,
+        grammaticality_evaluator: GrammaticalityEvaluator,
+        gan_discriminator: GANDiscriminator,
+        gan_loss: _Loss,
+    ):
+        super().__init__()
+        self.entailment_classifier = entailment_classifier
+        self.sentiment_classifier = sentiment_classifier
+        self.grammaticality_evaluator = grammaticality_evaluator
+        self.gan_discriminator = gan_discriminator
+        self.gan_loss = gan_loss
 
-    def get_entailment():
-        entailment_scores = entailment_classifier.evaluate_text_pairs(
+    @classmethod
+    def calculate_rewards(
+        cls,
+        entailment_scores: list[float],
+        negativity_scores: list[float],
+        gan_naturalness_scores: list[float],
+        grammaticality_scores: list[float],
+    ) -> list[float]:
+        if any([score < 0.8 for score in gan_naturalness_scores]):
+            return gan_naturalness_scores
+        else:
+            # We want to assign rewards based on the worst-performing metric. We also want to
+            # make sure that all the generations for a given prompt are assigned rewards based
+            # on the same metric, so that the trained model has clear feedback.
+            score_lists = [entailment_scores, negativity_scores, grammaticality_scores]
+            min_scores = [min(scores) for scores in score_lists]
+            return score_lists[np.argmin(min_scores)]
+
+    def get_entailment(self, prompt: str, generations: list[str]) -> list[float]:
+        entailment_scores = self.entailment_classifier.evaluate_text_pairs(
             [(prompt, generation) for generation in generations], return_probs=True
-        )[:, entailment_classifier.entailment_code].tolist()
+        )[:, self.entailment_classifier.entailment_code].tolist()
         return entailment_scores
 
-    def get_negativity():
+    def get_negativity(self, generations: list[str]) -> list[float]:
         negativity_scores = [
             float(score.item())
-            for score in sentiment_classifier.evaluate_texts(generations, return_probs=True)[:, 0]
+            for score in self.sentiment_classifier.evaluate_texts(generations, return_probs=True)[
+                :, 0
+            ]
         ]
         return negativity_scores
 
-    def get_grammaticality():
+    def get_grammaticality(self, generations: list[str]) -> list[float]:
         grammaticality_scores = [
             float(score.item())
-            for score in grammaticality_evaluator.evaluate_texts(generations, return_probs=True)[
-                :, 1
-            ]
+            for score in self.grammaticality_evaluator.evaluate_texts(
+                generations, return_probs=True
+            )[:, 1]
         ]
         return grammaticality_scores
 
-    def get_gan_naturalness():
+    def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
         all_labels = torch.LongTensor(
             [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
-        ).to(gan_discriminator.device)
-        batch = gan_discriminator.prepare_batch(all_sentences)
-        gan_logits = gan_discriminator.forward(batch)
+        ).to(self.gan_discriminator.device)
+        batch = self.gan_discriminator.prepare_batch(all_sentences)
+        gan_logits = self.gan_discriminator.forward(batch)
         discriminator_accuracy = float(
             (torch.argmax(gan_logits, dim=1) == all_labels).float().mean()
         )
-        loss = gan_loss(gan_logits, all_labels)
-        gan_discriminator.optimizer.zero_grad()
+        loss = self.gan_loss(gan_logits, all_labels)
+        self.gan_discriminator.optimizer.zero_grad()
         loss.backward()
-        gan_discriminator.optimizer.step()
+        self.gan_discriminator.optimizer.step()
 
         # Multiplying by 2 because these scores will be close to 0.5 for a good generator and
         # discriminator - discriminator's accuracy will be close to random guessing. However,
@@ -103,49 +135,58 @@ def get_similarity_scores_and_nonstandard_metrics(
 
         return gan_fooling_factors, discriminator_accuracy
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        entailment_calculation = executor.submit(get_entailment)
-        negativity_calculation = executor.submit(get_negativity)
-        gan_naturalness_calculation = executor.submit(get_gan_naturalness)
-        grammaticality_calculation = executor.submit(get_grammaticality)
+    def get_rewards(
+        self, prompt: str, generations: list[str]
+    ) -> tuple[list[float], list[dict[str, float]]]:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            entailment_calculation = executor.submit(
+                partial(self.get_entailment, prompt=prompt, generations=generations)
+            )
+            negativity_calculation = executor.submit(
+                partial(self.get_negativity, generations=generations)
+            )
+            gan_naturalness_calculation = executor.submit(
+                partial(self.get_gan_naturalness, generations=generations)
+            )
+            grammaticality_calculation = executor.submit(
+                partial(self.get_grammaticality, generations=generations)
+            )
 
-    entailment_scores = entailment_calculation.result()
-    negativity_scores = negativity_calculation.result()
-    gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
-    grammaticality_scores = grammaticality_calculation.result()
+        entailment_scores = entailment_calculation.result()
+        negativity_scores = negativity_calculation.result()
+        grammaticality_scores = grammaticality_calculation.result()
+        gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
-    stats = [
-        {
-            "entailment_score": entailment_score,
-            "negativity_score": negativity_score,
-            "gan_naturalness_score": gan_naturalness_score,
-            "gan_discriminator_accuracy": discriminator_accuracy,
-            "grammaticality_score": grammaticality_score,
-        }
-        for (
-            entailment_score,
-            negativity_score,
-            gan_naturalness_score,
-            grammaticality_score,
-        ) in zip(
+        stats = [
+            {
+                "entailment_score": entailment_score,
+                "negativity_score": negativity_score,
+                "gan_naturalness_score": gan_naturalness_score,
+                "grammaticality_score": grammaticality_score,
+                "gan_discriminator_accuracy": discriminator_accuracy,
+            }
+            for (
+                entailment_score,
+                negativity_score,
+                gan_naturalness_score,
+                grammaticality_score,
+            ) in zip(
+                entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
+            )
+        ]
+        target_metrics = self.calculate_rewards(
             entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
         )
-    ]
-    target_metrics = [
-        calculate_reward(
-            entailment_score, negativity_score, gan_naturalness_score, grammaticality_score
-        )
-        for (
-            entailment_score,
-            negativity_score,
-            gan_naturalness_score,
-            grammaticality_score,
-        ) in zip(
-            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
-        )
-    ]
+        return target_metrics, stats
 
-    return target_metrics, stats
+    def get_metric_names(self) -> list[str]:
+        return [
+            ENTAILMENT,
+            NEGATIVITY,
+            NATURALNESS,
+            GRAMMATICALITY,
+            GAN_ACCURACY,
+        ]
 
 
 def train(
@@ -159,6 +200,7 @@ def train(
     n_epochs: int,
     attacker_lr: float,
     beta: float,
+    temperature,
     trained_model_device: str,
     reference_model_device: str,
     max_len: int,
@@ -167,10 +209,8 @@ def train(
     params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
-    run_no = 0
-    while (save_dir / f"run_{run_no}").exists():
-        run_no += 1
-    save_dir = save_dir / f"run_{run_no}"
+    run_subdir_name = get_next_run_subdir_name(save_dir)
+    save_dir = save_dir / run_subdir_name
     params_to_save.update({"save_dir": str(save_dir)})
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -184,19 +224,20 @@ def train(
     gan_loss = nn.CrossEntropyLoss(
         reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
     )
-    reward_function = partial(
-        get_similarity_scores_and_nonstandard_metrics,
+    metric_calculator = NegativizerMetricCalculator(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         grammaticality_evaluator=grammaticality_evaluator,
         gan_discriminator=gan_discriminator,
         gan_loss=gan_loss,
     )
+
     dpo_trainer = DPOTrainer(
         trained_model=echo,
-        rewards_and_metrics_function=reward_function,
+        metric_calculator=metric_calculator,
         trained_model_optimizer=echo_optimizer,
         beta=beta,
+        temperature=temperature,
         max_len=max_len,
         trained_model_device=trained_model_device,
         reference_model_device=reference_model_device,
@@ -231,6 +272,7 @@ def main(
     attacker_lr: float,
     gan_lr: float,
     beta: float,
+    temperature,
     save_dir: Path,
     call_parameters_save_path: Path,
     params_to_save: dict,
@@ -289,6 +331,7 @@ def main(
         n_epochs,
         attacker_lr,
         beta,
+        temperature,
         trained_model_device,
         reference_model_device,
         max_len,
@@ -305,7 +348,11 @@ if __name__ == "__main__":
     ]
 
     source_model_name = echo_params["source_model_name"]
-    source_model_weights_path = Path(echo_params["source_model_weights_path"])
+    source_model_weights_path = (
+        Path(echo_params["source_model_weights_path"])
+        if echo_params["source_model_weights_path"] is not None
+        else None
+    )
 
     train_split_path = Path(echo_params["train_split_path"])
     eval_split_path = Path(echo_params["eval_split_path"])
@@ -316,6 +363,7 @@ if __name__ == "__main__":
     attacker_lr = float(echo_params["attacker_lr"])
     gan_lr = float(echo_params["gan_lr"])
     beta = float(echo_params["beta"])
+    temperature = float(echo_params["temperature"])
     n_max_train_samples: int | None = echo_params["n_max_train_samples"]
 
     save_dir = Path(echo_params["save_dir"])
@@ -331,6 +379,7 @@ if __name__ == "__main__":
         attacker_lr,
         gan_lr,
         beta,
+        temperature,
         save_dir,
         call_parameters_save_path,
         echo_params,

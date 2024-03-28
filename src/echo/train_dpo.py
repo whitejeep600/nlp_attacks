@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path
 
 import torch
@@ -11,9 +10,9 @@ from tqdm import tqdm
 
 from src.classifiers.similarity_evaluator import SimilarityEvaluator
 from src.datasets.sst2_dataset import SST2Dataset
-from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer
+from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import get_available_torch_devices
+from src.utils import get_available_torch_devices, get_next_run_subdir_name
 
 
 def get_similarity_scores_and_nonstandard_metrics(
@@ -33,6 +32,28 @@ def get_similarity_scores_and_nonstandard_metrics(
     return similarity_scores, stats
 
 
+class EchoMetricCalculator(RewardCalculator):
+    def __init__(self, similarity_evaluator: SimilarityEvaluator):
+        super().__init__()
+        self.similarity_evaluator = similarity_evaluator
+
+    def get_similarity_scores_and_nonstandard_metrics(
+        self,
+        prompt: str,
+        generations: list[str],
+    ) -> tuple[list[float], list[dict[str, float]]]:
+        similarity_scores = self.similarity_evaluator.evaluate_many_to_one(generations, prompt)
+
+        stats = [
+            {
+                "similarity_score": similarity_score,
+            }
+            for similarity_score in similarity_scores
+        ]
+
+        return similarity_scores, stats
+
+
 def train(
     echo: GenerativeBart,
     similarity_evaluator: SimilarityEvaluator,
@@ -41,6 +62,7 @@ def train(
     n_epochs: int,
     attacker_lr: float,
     beta: float,
+    temperature: float,
     trained_model_device: str,
     reference_model_device: str,
     max_len: int,
@@ -49,27 +71,26 @@ def train(
     params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
-    run_no = 0
-    while (save_dir / f"run_{run_no}").exists():
-        run_no += 1
-    save_dir = save_dir / f"run_{run_no}"
+    run_subdir_name = get_next_run_subdir_name(save_dir)
+    save_dir = save_dir / run_subdir_name
     params_to_save.update({"save_dir": str(save_dir)})
     save_dir.mkdir(parents=True, exist_ok=True)
+
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
     echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
 
     similarity_evaluator.eval()
 
-    reward_function = partial(
-        get_similarity_scores_and_nonstandard_metrics,
+    metric_calculator = EchoMetricCalculator(
         similarity_evaluator=similarity_evaluator,
     )
     dpo_trainer = DPOTrainer(
         trained_model=echo,
-        rewards_and_metrics_function=reward_function,
+        metric_calculator=metric_calculator,
         trained_model_optimizer=echo_optimizer,
         beta=beta,
+        temperature=temperature,
         max_len=max_len,
         trained_model_device=trained_model_device,
         reference_model_device=reference_model_device,
@@ -103,6 +124,7 @@ def main(
     n_epochs: int,
     attacker_lr: float,
     beta: float,
+    temperature,
     save_dir: Path,
     call_parameters_save_path: Path,
     params_to_save: dict,
@@ -148,6 +170,7 @@ def main(
         n_epochs,
         attacker_lr,
         beta,
+        temperature,
         trained_model_device,
         reference_model_device,
         max_len,
@@ -172,6 +195,7 @@ if __name__ == "__main__":
     n_epochs = int(echo_params["n_epochs"])
     attacker_lr = float(echo_params["attacker_lr"])
     beta = float(echo_params["beta"])
+    temperature = float(echo_params["temperature"])
     n_max_train_samples: int | None = echo_params["n_max_train_samples"]
 
     save_dir = Path(echo_params["save_dir"])
@@ -187,6 +211,7 @@ if __name__ == "__main__":
         n_epochs,
         attacker_lr,
         beta,
+        temperature,
         save_dir,
         call_parameters_save_path,
         echo_params,

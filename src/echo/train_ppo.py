@@ -14,7 +14,7 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.generative_bart import GenerativeBart
 from src.generation.ppo_trainer import EVAL, TRAIN, PPOTrainer
 from src.generation.value_model import ValueModel
-from src.utils import get_available_torch_devices
+from src.utils import get_available_torch_devices, get_next_run_subdir_name
 
 MEM_SNAPSHOT_SAVE_PATH = "snapshot.pickle"
 
@@ -52,10 +52,8 @@ def train(
     params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
-    run_no = 0
-    while (save_dir / f"run_{run_no}").exists():
-        run_no += 1
-    save_dir = save_dir / f"run_{run_no}"
+    run_subdir_name = get_next_run_subdir_name(save_dir)
+    save_dir = save_dir / run_subdir_name
     params_to_save.update({"save_dir": str(save_dir)})
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)

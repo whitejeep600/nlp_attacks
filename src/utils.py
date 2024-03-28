@@ -1,4 +1,6 @@
+import re
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -57,3 +59,15 @@ class ListDict:
 
     def __getitem__(self, item) -> Any:
         return self.lists[item]
+
+
+def get_next_run_subdir_name(run_save_dir: Path) -> str:
+    subdir_regex = re.compile("run_([0-9]+)")
+    existing_run_nos: set[int] = set()
+    for run_subdir in run_save_dir.iterdir():
+        subdir_name = run_subdir.name
+        match = subdir_regex.match(subdir_name)
+        if match is not None:
+            run_no = match.groups()[0]
+            existing_run_nos.add(int(run_no))
+    return f"run_{max(existing_run_nos) + 1}"

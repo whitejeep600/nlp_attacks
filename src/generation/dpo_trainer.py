@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 import numpy as np
+import pandas as pd
 import torch
 from numpy import mean
 from torch.nn.functional import logsigmoid
@@ -14,7 +15,7 @@ from tqdm import tqdm
 
 from src.generation.base_trainer import EVAL, MODES, POLICY_LOSS_METRIC, TRAIN, Trainer
 from src.generation.generative_bart import GenerativeBart
-from src.utils import ListDict, get_length_without_padding, sequence_logprob
+from src.utils import get_length_without_padding, sequence_logprob
 
 
 class SampleGenerations:
@@ -44,13 +45,28 @@ class SampleGenerations:
         self.generation_metrics = [generation_metrics[i] for i in ordering]
 
 
+class RewardCalculator:
+    def __init__(self):
+        pass
+
+    # Return a list of rewards, and a list of metric dicts
+    def get_rewards(
+        self, prompt: str, generations: list[str]
+    ) -> tuple[list[float], list[dict[str, float]]]:
+        raise NotImplementedError
+
+    def get_metric_names(self) -> list[str]:
+        raise NotImplementedError
+
+
 class DPOTrainer(Trainer):
     def __init__(
         self,
         trained_model: GenerativeBart,
-        rewards_and_metrics_function: Callable,
+        metric_calculator: RewardCalculator,
         trained_model_optimizer: Optimizer,
         beta: float,
+        temperature: float,
         max_len: int,
         trained_model_device: str,
         reference_model_device: str,
@@ -68,7 +84,7 @@ class DPOTrainer(Trainer):
         # Beta - common notation for the term determining the influence of the penalty
         # for Kullback-Leibler divergence between the trained and reference policy.
         self.trained_model = trained_model
-        self.rewards_and_metrics_function = rewards_and_metrics_function
+        self.metric_calculator = metric_calculator
         self.reference_model = copy.deepcopy(self.trained_model)
         self.reference_model.to(reference_model_device)
         self.reference_model.eval()
@@ -76,6 +92,7 @@ class DPOTrainer(Trainer):
         self.trained_model_device = trained_model_device
         self.reference_model_device = reference_model_device
         self.beta = beta
+        self.temperature = temperature
 
     def train(self) -> None:
         self.trained_model.train()
@@ -90,7 +107,6 @@ class DPOTrainer(Trainer):
         batch_inputs: torch.Tensor,
         method: str = "sampling",
         max_length: int | None = None,
-        temperature: float = 1.0,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
         if method not in ["sampling", "greedy"]:
             raise ValueError(f"Invalid generation method: {method}")
@@ -118,8 +134,10 @@ class DPOTrainer(Trainer):
                     .logits[:, -1, :]
                     .to(self.trained_model_device)
                 )
-            new_probabilities = torch.softmax(new_logits / temperature, dim=-1)
-            new_reference_probabilities = torch.softmax(new_reference_logits / temperature, dim=-1)
+            new_probabilities = torch.softmax(new_logits / self.temperature, dim=-1)
+            new_reference_probabilities = torch.softmax(
+                new_reference_logits / self.temperature, dim=-1
+            )
             if method == "greedy":
                 next_ids = torch.argmax(new_logits, dim=-1)[:, None]
             else:  # method == "sampling":
@@ -158,7 +176,7 @@ class DPOTrainer(Trainer):
         ]
         return truncated_decoded_id_single_tensors, truncated_probs, truncated_reference_probs
 
-    def sample_two_generations(
+    def sample_two_generations_per_sample(
         self,
         batch_input_ids: torch.Tensor,
         batch_original_seqs: list[str],
@@ -167,6 +185,8 @@ class DPOTrainer(Trainer):
 
         :param batch_input_ids: shape (batch_size, seq_len)
         :param batch_original_seqs: list of strings representing the original batch sequences
+        :return: list of SampleGenerations, one SampleGenerations object per sample. Note that
+            each SampleGeneration itself contains multiple generations for a single samples
 
         """
         batch_input_ids = batch_input_ids.to(self.trained_model_device)
@@ -175,7 +195,6 @@ class DPOTrainer(Trainer):
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
             max_length=self.max_len,
             method="sampling",
-            temperature=1,
         )
         for batch_index in range(len(generation_ids) // 2):
             ids_0 = generation_ids[batch_index * 2]
@@ -186,7 +205,7 @@ class DPOTrainer(Trainer):
             reference_probs_1 = reference_probs[batch_index * 2 + 1]
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
-            scores, metrics = self.rewards_and_metrics_function(
+            scores, metrics = self.metric_calculator.get_rewards(
                 sample_original_seq, [text_0, text_1]
             )
             generations = SampleGenerations(
@@ -247,19 +266,38 @@ class DPOTrainer(Trainer):
     def save_trained_models(self) -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
 
+    def save_epoch_generations_and_metrics(
+        self, all_batch_generations: list[list[SampleGenerations]]
+    ) -> None:
+        flattened_generations = [
+            sample_generation
+            for batch_generations in all_batch_generations
+            for sample_generation in batch_generations
+        ]
+        all_generation_info_dicts: list[dict[str, Any]] = []
+        for sample_generations in flattened_generations:
+            for i in range(len(sample_generations.generation_texts)):
+                generation_info = {
+                    "prompt": sample_generations.prompt,
+                    "text": sample_generations.generation_texts[i],
+                    "total_score": sample_generations.generation_scores[i],
+                }
+                generation_info.update(sample_generations.generation_metrics[i])
+                all_generation_info_dicts.append(generation_info)
+        df_to_save = pd.DataFrame.from_records(all_generation_info_dicts)
+        generated_sentences_path = self.save_dir / "generated_sentences"
+        generated_sentences_path.mkdir(parents=True, exist_ok=True)
+        current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
+        df_to_save.to_csv(current_save_path)
+
     def iteration(
         self, dataloader: DataLoader, mode: str, n_max_batches: int | None = None
     ) -> float:
         assert mode in MODES, f"unsupported mode, expected one of {MODES}"
-
         self.initialize_iteration(mode)
-        all_original_seqs: list[str] = []
-        all_generated_sentences: list[str] = []
 
         epoch_policy_losses: list[float] = []
-        epoch_generation_scores: list[float] = []
-        batch_nonstandard_metrics = ListDict()
-        generated_sentence_metrics_to_save = ListDict()
+        all_epoch_batch_generations: list[list[SampleGenerations]] = []
 
         for batch_no, batch in tqdm(
             enumerate(dataloader),
@@ -270,71 +308,55 @@ class DPOTrainer(Trainer):
         ):
             input_ids = batch["input_ids"].to(self.trained_model_device)
             original_seqs = batch["original_seq"]
-            generations = self.sample_two_generations(input_ids, original_seqs)
-
-            generation_metric_keys = generations[0].generation_metrics[0].keys()
-            for metric_key in generation_metric_keys:
-                batch_nonstandard_metrics.append(
-                    metric_key,
-                    float(
-                        mean(
-                            [
-                                single_generation_metrics[metric_key]
-                                for generation in generations
-                                for single_generation_metrics in generation.generation_metrics
-                            ]
-                        )
-                    ),
-                )
+            generations = self.sample_two_generations_per_sample(input_ids, original_seqs)
+            all_epoch_batch_generations.append(generations)
 
             policy_loss = self.get_batch_policy_loss(generations)
             if mode == TRAIN:
                 self.policy_loss_step(policy_loss)
 
             epoch_policy_losses.append(policy_loss.item())
-            epoch_generation_scores.append(
-                float(
-                    mean(
-                        [
-                            score
-                            for generation in generations
-                            for score in generation.generation_scores
-                        ]
-                    )
-                )
-            )
 
-            if mode == EVAL:
-                all_original_seqs += original_seqs
-                all_generated_sentences += [
-                    generation.generation_texts[0] for generation in generations
-                ]
-                for metric_name in batch_nonstandard_metrics.lists.keys():
-                    for generation in generations:
-                        generated_sentence_metrics_to_save.append(
-                            metric_name, generation.generation_metrics[0][metric_name]
-                        )
             if batch_no == n_max_batches:
                 break
 
-        mean_generation_score = float(mean(epoch_generation_scores))
+        batch_nonstandard_metrics = {
+            metric_name: [
+                float(
+                    mean(
+                        [
+                            single_generation_metrics[metric_name]
+                            for sample_generations in batch_generations
+                            for single_generation_metrics in sample_generations.generation_metrics
+                        ]
+                    )
+                )
+                for batch_generations in all_epoch_batch_generations
+            ]
+            for metric_name in self.metric_calculator.get_metric_names()
+        }
+
+        mean_generation_score = float(
+            mean(
+                [
+                    single_generation_score
+                    for batch_generations in all_epoch_batch_generations
+                    for sample_generations in batch_generations
+                    for single_generation_score in sample_generations.generation_scores
+                ]
+            )
+        )
         self.add_epoch_metrics(
             {
                 POLICY_LOSS_METRIC: epoch_policy_losses,
             },
             mode,
         )
-        nonstandard_metric_dicts: dict[str, list[float]] = {
-            list_name: batch_nonstandard_metrics[list_name]
-            for list_name in batch_nonstandard_metrics.lists.keys()
-        }
         self.add_nonstandard_epoch_metrics(
-            nonstandard_metric_dicts,
+            batch_nonstandard_metrics,
             mode,
         )
         if mode == EVAL:
-            self.save_generated_eval_sentences(
-                all_original_seqs, all_generated_sentences, generated_sentence_metrics_to_save
-            )
+            self.save_epoch_generations_and_metrics(all_epoch_batch_generations)
 
         return mean_generation_score

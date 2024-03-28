@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import time
 import warnings
@@ -111,7 +112,10 @@ class Trainer:
     def conclude_epoch(self) -> None:
         all_metric_names = list(self.all_data.keys())
         average_metrics = {
-            mode: {key: self.all_data[key][mode][-1].mean() for key in all_metric_names}
+            mode: {
+                key: round(self.all_data[key][mode][self.epochs_elapsed].mean(), 3)
+                for key in all_metric_names
+            }
             for mode in MODES
         }
         print(f"\nEpoch {self.epochs_elapsed}.\n")
@@ -119,18 +123,21 @@ class Trainer:
             print(f"This epoch's {mode} stats are as follows:\n" f"{average_metrics[mode]}\n")
         self.epochs_elapsed += 1
 
+    def get_epoch_stats(self, epoch_no: int) -> dict:
+        return {
+            key: round(float(mean(self.all_data[key][EVAL][epoch_no])), 3)
+            for key in self.all_data.keys()
+        }
+
     def save_summary(self, best_epoch_no: int) -> None:
         time_now = time.time()
         time_elapsed = time.gmtime(time_now - self.train_start_time)
 
         summary_path = self.save_dir / "summary.txt"
-        best_epoch_stats = {
-            key: round(float(mean(self.all_data[key][EVAL][best_epoch_no])), 3)
-            for key in self.all_data.keys()
-        }
+        best_epoch_stats = self.get_epoch_stats(best_epoch_no)
         summary = (
             f"Training time: {time.strftime('%H:%M:%S', time_elapsed)}"
-            f" Number of epochs elapsed: {self.epochs_elapsed}, best stats (final rewards)"
+            f" Number of epochs elapsed: {self.epochs_elapsed}, best stats"
             f" for epoch {best_epoch_no}, as follows: {best_epoch_stats}\n"
         )
         with open(summary_path, "w") as f:
@@ -160,6 +167,8 @@ class Trainer:
                 if not all([len(data) == len(plotted_data[0]) for data in plotted_data]):
                     warnings.warn("Some logged data had inconsistent lengths per epoch.")
                 if mode == TRAIN:
+                    # Averaging metrics per a small group of consecutive batches. Then plotting
+                    # the scores for every group.
                     averaged_data = [
                         epoch_data[
                             np.arange(epoch_data.shape[0] - PLOT_AVG_WINDOW_LENGTH + 1)[:, None]
@@ -169,6 +178,8 @@ class Trainer:
                     ]
                     ys = [y for epoch_data in averaged_data for y in epoch_data]
                 else:
+                    # We want a single, average metric per epoch. This was already averaged
+                    # in the add_epoch_metrics function.
                     ys = [y for epoch_data in plotted_data for y in epoch_data]
                 xs = np.linspace(0, len(plotted_data), len(ys))
                 title = f"{mode}_{variable}"
@@ -178,9 +189,11 @@ class Trainer:
                 plt.savefig(plots_path / f"{title}.jpg", dpi=256)
                 plt.clf()
 
-    def save_call_parameters(self) -> None:
+    def save_call_parameters_and_summary(self, best_epoch_no: int) -> None:
         # For comparison, we likely want to save these parameters together for all
         # model runs, as a general log of the experiment process.
+        to_save = copy.deepcopy(self.params_to_save)
+        to_save["summary"] = self.get_epoch_stats(best_epoch_no)
         with open(self.call_parameters_save_path, "a") as f:
             f.write(f"{json.dumps(self.params_to_save, indent=2)}\n\n")
 
@@ -189,4 +202,4 @@ class Trainer:
         self.save_logs()
         self.save_summary(best_epoch_no)
         self.save_plots()
-        self.save_call_parameters()
+        self.save_call_parameters_and_summary(best_epoch_no)
