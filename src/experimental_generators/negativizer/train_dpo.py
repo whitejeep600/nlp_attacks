@@ -20,7 +20,7 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import get_available_torch_devices, get_next_run_subdir_name
+from src.utils import get_available_torch_devices, get_next_run_subdir_name, round_list
 
 GAN_GENERATED_LABEL = 1
 
@@ -88,7 +88,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         entailment_scores = self.entailment_classifier.evaluate_text_pairs(
             [(prompt, generation) for generation in generations], return_probs=True
         )[:, self.entailment_classifier.entailment_code].tolist()
-        return entailment_scores
+        return round_list(entailment_scores)
 
     def get_negativity(self, generations: list[str]) -> list[float]:
         negativity_scores = [
@@ -97,7 +97,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 :, 0
             ]
         ]
-        return negativity_scores
+        return round_list(negativity_scores)
 
     def get_grammaticality(self, generations: list[str]) -> list[float]:
         grammaticality_scores = [
@@ -106,7 +106,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 generations, return_probs=True
             )[:, 1]
         ]
-        return grammaticality_scores
+        return round_list(grammaticality_scores)
 
     def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
@@ -133,7 +133,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             2 * torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL][:-1]
         ).tolist()
 
-        return gan_fooling_factors, discriminator_accuracy
+        return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
     def get_rewards(
         self, prompt: str, generations: list[str]
@@ -146,7 +146,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 partial(self.get_negativity, generations=generations)
             )
             gan_naturalness_calculation = executor.submit(
-                partial(self.get_gan_naturalness, generations=generations)
+                partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
             )
             grammaticality_calculation = executor.submit(
                 partial(self.get_grammaticality, generations=generations)

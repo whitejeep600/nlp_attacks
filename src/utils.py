@@ -71,3 +71,7 @@ def get_next_run_subdir_name(run_save_dir: Path) -> str:
             run_no = match.groups()[0]
             existing_run_nos.add(int(run_no))
     return f"run_{max(existing_run_nos) + 1}"
+
+
+def round_list(target_list: list[float]) -> list[float]:
+    return [round(x, 3) for x in target_list]
