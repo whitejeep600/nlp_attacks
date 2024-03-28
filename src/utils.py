@@ -70,7 +70,11 @@ def get_next_run_subdir_name(run_save_dir: Path) -> str:
         if match is not None:
             run_no = match.groups()[0]
             existing_run_nos.add(int(run_no))
-    return f"run_{max(existing_run_nos) + 1}"
+    if not existing_run_nos:
+        next_no = 0
+    else:
+        next_no = max(existing_run_nos) + 1
+    return f"run_{next_no}"
 
 
 def round_list(target_list: list[float]) -> list[float]:
