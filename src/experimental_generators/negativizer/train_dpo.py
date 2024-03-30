@@ -157,6 +157,10 @@ class NegativizerMetricCalculator(RewardCalculator):
         grammaticality_scores = grammaticality_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
+        target_metrics = self.calculate_rewards(
+            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
+        )
+
         stats = [
             {
                 "entailment_score": entailment_score,
@@ -164,19 +168,18 @@ class NegativizerMetricCalculator(RewardCalculator):
                 "gan_naturalness_score": gan_naturalness_score,
                 "grammaticality_score": grammaticality_score,
                 "gan_discriminator_accuracy": discriminator_accuracy,
+                "target_metric": target_metric,
             }
             for (
                 entailment_score,
                 negativity_score,
                 gan_naturalness_score,
                 grammaticality_score,
+                target_metric
             ) in zip(
-                entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
+                entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores, target_metrics
             )
         ]
-        target_metrics = self.calculate_rewards(
-            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
-        )
         return target_metrics, stats
 
     def get_metric_names(self) -> list[str]:
