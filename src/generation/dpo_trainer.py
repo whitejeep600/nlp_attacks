@@ -112,7 +112,7 @@ class DPOTrainer(Trainer):
         self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
-        self.trained_model_lr_scheduler = WarmupScheduler(attacker_lr, 0, 128)
+        self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
 
     def train(self) -> None:
         self.trained_model.train()
