@@ -2,6 +2,7 @@ checkpoints/*
 src/playground.py
 params.yaml
 runs/*
+download_plots.sh
 
 __pycache__/
 

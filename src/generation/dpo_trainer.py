@@ -59,6 +59,24 @@ class RewardCalculator:
         raise NotImplementedError
 
 
+class WarmupScheduler:
+    def __init__(self, initial_lr: float, final_lr: float, n_steps: int):
+        self.current_lr = initial_lr
+        self.final_lr = final_lr
+        self.n_steps = n_steps
+        self.step_size = (final_lr - initial_lr) / n_steps
+        self.steps_performed = 0
+
+    def get(self):
+        result = self.current_lr
+        if self.steps_performed < self.n_steps:
+            self.current_lr += self.step_size
+            self.n_steps += 1
+        elif self.steps_performed == self.n_steps:
+            assert result == self.final_lr
+        return result
+
+
 class DPOTrainer(Trainer):
     def __init__(
         self,
@@ -67,6 +85,7 @@ class DPOTrainer(Trainer):
         trained_model_optimizer: Optimizer,
         beta: float,
         temperature: float,
+        attacker_lr: float,
         max_len: int,
         trained_model_device: str,
         reference_model_device: str,
@@ -93,6 +112,7 @@ class DPOTrainer(Trainer):
         self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
+        self.trained_model_lr_scheduler = WarmupScheduler(attacker_lr, 0, 128)
 
     def train(self) -> None:
         self.trained_model.train()
@@ -258,7 +278,13 @@ class DPOTrainer(Trainer):
 
         return -1 * logsigmoid(self.beta * (better_seq_logratios - worse_seq_logratios)).mean()
 
+    def update_learning_rate(self) -> None:
+        new_lr = self.trained_model_lr_scheduler.get()
+        for g in self.trained_model_optimizer.param_groups:
+            g["lr"] = new_lr
+
     def policy_loss_step(self, policy_loss: torch.Tensor):
+        self.update_learning_rate()
         self.trained_model_optimizer.zero_grad()
         policy_loss.backward()
         self.trained_model_optimizer.step()

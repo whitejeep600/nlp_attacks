@@ -175,9 +175,13 @@ class NegativizerMetricCalculator(RewardCalculator):
                 negativity_score,
                 gan_naturalness_score,
                 grammaticality_score,
-                target_metric
+                target_metric,
             ) in zip(
-                entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores, target_metrics
+                entailment_scores,
+                negativity_scores,
+                gan_naturalness_scores,
+                grammaticality_scores,
+                target_metrics,
             )
         ]
         return target_metrics, stats
@@ -218,7 +222,7 @@ def train(
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
+    negativizer_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
 
     entailment_classifier.eval()
 
@@ -238,9 +242,10 @@ def train(
     dpo_trainer = DPOTrainer(
         trained_model=echo,
         metric_calculator=metric_calculator,
-        trained_model_optimizer=echo_optimizer,
+        trained_model_optimizer=negativizer_optimizer,
         beta=beta,
         temperature=temperature,
+        attacker_lr=attacker_lr,
         max_len=max_len,
         trained_model_device=trained_model_device,
         reference_model_device=reference_model_device,

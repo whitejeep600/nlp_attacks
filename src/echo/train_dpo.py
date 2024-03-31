@@ -91,6 +91,7 @@ def train(
         trained_model_optimizer=echo_optimizer,
         beta=beta,
         temperature=temperature,
+        attacker_lr=attacker_lr,
         max_len=max_len,
         trained_model_device=trained_model_device,
         reference_model_device=reference_model_device,
