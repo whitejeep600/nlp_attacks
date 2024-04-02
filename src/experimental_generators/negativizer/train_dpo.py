@@ -75,6 +75,8 @@ class NegativizerMetricCalculator(RewardCalculator):
         grammaticality_scores: list[float],
     ) -> list[float]:
         if any([score < 0.8 for score in gan_naturalness_scores]):
+            # GAN naturalness is the most important metric to keep high, because once it
+            # improves the stability of the training.
             return gan_naturalness_scores
         else:
             # We want to assign rewards based on the worst-performing metric. We also want to
@@ -222,7 +224,7 @@ def train(
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    negativizer_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
+    negativizer_optimizer = AdamW(echo.parameters(), lr=0)
 
     entailment_classifier.eval()
 

@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from numpy import mean
+from numpy import isclose, mean
 from torch.nn.functional import logsigmoid
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -62,18 +62,23 @@ class RewardCalculator:
 class WarmupScheduler:
     def __init__(self, initial_lr: float, final_lr: float, n_steps: int):
         self.current_lr = initial_lr
+        self.initial_lr = initial_lr
         self.final_lr = final_lr
-        self.n_steps = n_steps
+        self.total_n_steps = n_steps
         self.step_size = (final_lr - initial_lr) / n_steps
         self.steps_performed = 0
 
     def get(self):
         result = self.current_lr
-        if self.steps_performed < self.n_steps:
-            self.current_lr += self.step_size
-            self.n_steps += 1
-        elif self.steps_performed == self.n_steps:
-            assert result == self.final_lr
+        if self.steps_performed < self.total_n_steps:
+            self.current_lr = (
+                self.initial_lr
+                + (self.final_lr - self.initial_lr)
+                * (self.steps_performed / self.total_n_steps) ** 2
+            )
+            self.steps_performed += 1
+        elif self.steps_performed == self.total_n_steps:
+            assert isclose(result, self.final_lr)
         return result
 
 
@@ -112,7 +117,7 @@ class DPOTrainer(Trainer):
         self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
-        self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
+        self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 256)
 
     def train(self) -> None:
         self.trained_model.train()
