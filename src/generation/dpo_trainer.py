@@ -65,7 +65,6 @@ class WarmupScheduler:
         self.initial_lr = initial_lr
         self.final_lr = final_lr
         self.total_n_steps = n_steps
-        self.step_size = (final_lr - initial_lr) / n_steps
         self.steps_performed = 0
 
     def get(self):
@@ -288,11 +287,12 @@ class DPOTrainer(Trainer):
         for g in self.trained_model_optimizer.param_groups:
             g["lr"] = new_lr
 
-    def policy_loss_step(self, policy_loss: torch.Tensor):
+    def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
         self.update_learning_rate()
-        self.trained_model_optimizer.zero_grad()
         policy_loss.backward()
-        self.trained_model_optimizer.step()
+        if batch_no % 4 == 0:
+            self.trained_model_optimizer.step()
+            self.trained_model_optimizer.zero_grad()
 
     def save_trained_models(self) -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
@@ -344,7 +344,7 @@ class DPOTrainer(Trainer):
 
             policy_loss = self.get_batch_policy_loss(generations)
             if mode == TRAIN:
-                self.policy_loss_step(policy_loss)
+                self.policy_loss_step(policy_loss, batch_no)
 
             epoch_policy_losses.append(policy_loss.item())
 
