@@ -70,12 +70,12 @@ class WarmupScheduler:
     def get(self):
         result = self.current_lr
         if self.steps_performed < self.total_n_steps:
+            self.steps_performed += 1
             self.current_lr = (
                 self.initial_lr
                 + (self.final_lr - self.initial_lr)
                 * (self.steps_performed / self.total_n_steps) ** 2
             )
-            self.steps_performed += 1
         elif self.steps_performed == self.total_n_steps:
             assert isclose(result, self.final_lr)
         return result
@@ -96,6 +96,7 @@ class DPOTrainer(Trainer):
         save_dir: Path,
         call_parameters_save_path: Path,
         params_to_save: dict,
+        gradient_accumulation_batches: int = 4
     ):
         super().__init__(
             standard_metric_names=[POLICY_LOSS_METRIC],
@@ -116,7 +117,8 @@ class DPOTrainer(Trainer):
         self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
-        self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 256)
+        self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
+        self.gradient_accumulation_batches = gradient_accumulation_batches
 
     def train(self) -> None:
         self.trained_model.train()
@@ -290,7 +292,7 @@ class DPOTrainer(Trainer):
     def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
         self.update_learning_rate()
         policy_loss.backward()
-        if batch_no % 4 == 0:
+        if batch_no % self.gradient_accumulation_batches == self.gradient_accumulation_batches - 1:
             self.trained_model_optimizer.step()
             self.trained_model_optimizer.zero_grad()
 
