@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
-from src.constants import LABEL, SENTENCE, ID
+from src.constants import ID, LABEL, SENTENCE
 
 
 class SST2Dataset(Dataset):

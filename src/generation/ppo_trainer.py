@@ -11,8 +11,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.constants import EVAL, MODES, POLICY_LOSS, REWARD, TRAIN
 from src.generation.base_trainer import Trainer
-from src.constants import TRAIN, EVAL, MODES, POLICY_LOSS, REWARD
 from src.generation.generative_bart import GenerativeBart
 from src.generation.value_model import ValueModel
 from src.utils import ListDict

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 # Metrics
 ENTAILMENT = "entailment_score"
 NEGATIVITY = "negativity_score"

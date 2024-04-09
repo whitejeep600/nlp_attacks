@@ -13,8 +13,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.constants import EVAL, MODES, POLICY_LOSS, TRAIN
 from src.generation.base_trainer import Trainer
-from src.constants import TRAIN, EVAL, MODES, POLICY_LOSS
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_length_without_padding, sequence_logprob
 
@@ -36,7 +36,7 @@ class SampleGenerations:
         ordering = np.argsort(rewards)
         self.prompt = prompt
         self.prompt_tokens = prompt_tokens
-        self.generation_scores = [rewards[i] for i in ordering]
+        self.rewards = [rewards[i] for i in ordering]
         self.generation_texts = [generation_texts[i] for i in ordering]
         self.generation_tokens = [generation_tokens[i] for i in ordering]
         self.generation_probabilities = [generation_probabilities[i] for i in ordering]
@@ -50,8 +50,7 @@ class RewardCalculator:
     def __init__(self):
         pass
 
-    # Return a list of rewards, and a list of metric dicts
-    def get_rewards(
+    def get_rewards_and_metrics(
         self, prompt: str, generations: list[str]
     ) -> tuple[list[float], list[dict[str, float]]]:
         raise NotImplementedError
@@ -232,7 +231,7 @@ class DPOTrainer(Trainer):
             reference_probs_1 = reference_probs[batch_index * 2 + 1]
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
-            rewards, metrics = self.metric_calculator.get_rewards(
+            rewards, metrics = self.metric_calculator.get_rewards_and_metrics(
                 sample_original_seq, [text_0, text_1]
             )
             generations = SampleGenerations(
@@ -314,7 +313,7 @@ class DPOTrainer(Trainer):
                 generation_info = {
                     "prompt": sample_generations.prompt,
                     "text": sample_generations.generation_texts[i],
-                    "reward": sample_generations.generation_scores[i],
+                    "reward": sample_generations.rewards[i],
                 }
                 generation_info.update(sample_generations.generation_metrics[i])
                 all_generation_info_dicts.append(generation_info)
@@ -376,7 +375,7 @@ class DPOTrainer(Trainer):
                     single_generation_score
                     for batch_generations in all_epoch_batch_generations
                     for sample_generations in batch_generations
-                    for single_generation_score in sample_generations.generation_scores
+                    for single_generation_score in sample_generations.rewards
                 ]
             )
         )

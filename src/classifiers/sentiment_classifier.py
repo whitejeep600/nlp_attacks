@@ -38,7 +38,9 @@ class SentimentClassifier(Classifier):
     def evaluate_texts(self, texts: list[str], return_probs=False) -> torch.Tensor:
         with torch.no_grad():
             if self.raw_name == "cnn-sst2":
-                logits = self.model(torch.IntTensor(self.model.tokenizer.batch_encode(texts)).to(self.device))
+                logits = self.model(
+                    torch.IntTensor(self.model.tokenizer.batch_encode(texts)).to(self.device)
+                )
             else:
                 logits = self.model(texts)
         if not return_probs:

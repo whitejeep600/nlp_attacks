@@ -16,17 +16,16 @@ from tqdm import tqdm
 from src.classifiers.entailment_evaluator import EntailmentEvaluator
 from src.classifiers.sentiment_classifier import SentimentClassifier
 from src.constants import (
-    GAN_GENERATED_LABEL,
     ENTAILMENT,
-    NEGATIVITY,
-    NATURALNESS,
-    GRAMMATICALITY,
+    EVAL,
     GAN_ACCURACY,
+    GAN_GENERATED_LABEL,
+    NATURALNESS,
     NEGATIVE,
+    NEGATIVITY,
     POSITIVE,
     REWARD,
     TRAIN,
-    EVAL,
 )
 from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
@@ -141,7 +140,7 @@ class NegativizerMetricCalculator(RewardCalculator):
 
         return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
-    def get_rewards(
+    def get_rewards_and_metrics(
         self, prompt: str, generations: list[str]
     ) -> tuple[list[float], list[dict[str, float]]]:
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -170,33 +169,44 @@ class NegativizerMetricCalculator(RewardCalculator):
         prompts_equal_generation = [
             int(generation.lower() == prompt.lower()) for generation in generations
         ]
-        prompts_equal = int(generations[0] == generations[1])
+        generations_equal = int(generations[0] == generations[1])
 
         stats = [
             {
-                "entailment_score": entailment_score,
-                "negativity_score": negativity_score,
-                "gan_naturalness_score": gan_naturalness_score,
+                ENTAILMENT: entailment_score,
+                NEGATIVITY: negativity_score,
+                NATURALNESS: gan_naturalness_score,
                 "prompt_equals_generation": prompt_equals_generation,
-                "gan_discriminator_accuracy": discriminator_accuracy,
-                "prompts_equal": prompts_equal,
+                REWARD: reward,
+                GAN_ACCURACY: discriminator_accuracy,
+                "generations_equal": generations_equal,
             }
             for (
                 entailment_score,
                 negativity_score,
                 gan_naturalness_score,
                 prompt_equals_generation,
+                reward,
             ) in zip(
                 entailment_scores,
                 negativity_scores,
                 gan_naturalness_scores,
                 prompts_equal_generation,
+                rewards,
             )
         ]
         return rewards, stats
 
     def get_metric_names(self) -> list[str]:
-        return [ENTAILMENT, NEGATIVITY, NATURALNESS, GRAMMATICALITY, GAN_ACCURACY, REWARD]
+        return [
+            ENTAILMENT,
+            NEGATIVITY,
+            NATURALNESS,
+            GAN_ACCURACY,
+            REWARD,
+            "prompt_equals_generation",
+            "generations_equal",
+        ]
 
 
 def train(

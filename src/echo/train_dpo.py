@@ -9,9 +9,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.similarity_evaluator import SimilarityEvaluator
+from src.constants import EVAL, TRAIN
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
-from src.constants import TRAIN, EVAL
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices, get_next_run_subdir_name
 

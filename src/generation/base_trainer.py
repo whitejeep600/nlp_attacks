@@ -11,7 +11,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from numpy import mean
 
-from src.constants import TRAIN, EVAL, MODES, PLOT_AVG_WINDOW_LENGTH
+from src.constants import EVAL, MODES, PLOT_AVG_WINDOW_LENGTH, TRAIN
 from src.utils import ListDict, get_current_git_commit_id
 
 
