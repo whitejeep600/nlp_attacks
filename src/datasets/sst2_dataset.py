@@ -27,8 +27,8 @@ class SST2Dataset(Dataset):
 
         if min_length is not None:
             source_df = source_df[source_df[SENTENCE].apply(lambda x: len(x.split())) >= min_length]
-        self.df = source_df
 
+        self.df = source_df
         self.tokenizer = tokenizer
         self.max_length = max_length
 
