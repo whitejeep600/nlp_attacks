@@ -13,7 +13,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.generation.base_trainer import EVAL, MODES, POLICY_LOSS_METRIC, TRAIN, Trainer
+from src.generation.base_trainer import Trainer
+from src.constants import TRAIN, EVAL, MODES, POLICY_LOSS
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_length_without_padding, sequence_logprob
 
@@ -27,15 +28,15 @@ class SampleGenerations:
         generation_tokens: list[torch.Tensor],
         generation_probabilities: list[torch.Tensor],
         generation_reference_probabilities: list[torch.Tensor],
-        generation_scores: list[float],
+        rewards: list[float],
         generation_metrics: list[dict[str, float]],
     ):
         # Afterwards it is assumed that the generations for a given prompt (and all their
         # corresponding attributes) are ordered by increasing score (reward).
-        ordering = np.argsort(generation_scores)
+        ordering = np.argsort(rewards)
         self.prompt = prompt
         self.prompt_tokens = prompt_tokens
-        self.generation_scores = [generation_scores[i] for i in ordering]
+        self.generation_scores = [rewards[i] for i in ordering]
         self.generation_texts = [generation_texts[i] for i in ordering]
         self.generation_tokens = [generation_tokens[i] for i in ordering]
         self.generation_probabilities = [generation_probabilities[i] for i in ordering]
@@ -96,10 +97,10 @@ class DPOTrainer(Trainer):
         save_dir: Path,
         call_parameters_save_path: Path,
         params_to_save: dict,
-        gradient_accumulation_batches: int = 4
+        gradient_accumulation_batches: int = 4,
     ):
         super().__init__(
-            standard_metric_names=[POLICY_LOSS_METRIC],
+            standard_metric_names=[POLICY_LOSS],
             save_dir=save_dir,
             call_parameters_save_path=call_parameters_save_path,
             params_to_save=params_to_save,
@@ -231,7 +232,7 @@ class DPOTrainer(Trainer):
             reference_probs_1 = reference_probs[batch_index * 2 + 1]
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
-            scores, metrics = self.metric_calculator.get_rewards(
+            rewards, metrics = self.metric_calculator.get_rewards(
                 sample_original_seq, [text_0, text_1]
             )
             generations = SampleGenerations(
@@ -241,7 +242,7 @@ class DPOTrainer(Trainer):
                 generation_tokens=[ids_0, ids_1],
                 generation_probabilities=[probs_0, probs_1],
                 generation_reference_probabilities=[reference_probs_0, reference_probs_1],
-                generation_scores=scores,
+                rewards=rewards,
                 generation_metrics=metrics,
             )
             all_generations.append(generations)
@@ -313,7 +314,7 @@ class DPOTrainer(Trainer):
                 generation_info = {
                     "prompt": sample_generations.prompt,
                     "text": sample_generations.generation_texts[i],
-                    "total_score": sample_generations.generation_scores[i],
+                    "reward": sample_generations.generation_scores[i],
                 }
                 generation_info.update(sample_generations.generation_metrics[i])
                 all_generation_info_dicts.append(generation_info)
@@ -381,7 +382,7 @@ class DPOTrainer(Trainer):
         )
         self.add_epoch_metrics(
             {
-                POLICY_LOSS_METRIC: epoch_policy_losses,
+                POLICY_LOSS: epoch_policy_losses,
             },
             mode,
         )

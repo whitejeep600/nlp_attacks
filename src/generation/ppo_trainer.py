@@ -11,7 +11,8 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.generation.base_trainer import EVAL, MODES, POLICY_LOSS_METRIC, TRAIN, Trainer
+from src.generation.base_trainer import Trainer
+from src.constants import TRAIN, EVAL, MODES, POLICY_LOSS, REWARD
 from src.generation.generative_bart import GenerativeBart
 from src.generation.value_model import ValueModel
 from src.utils import ListDict
@@ -28,7 +29,6 @@ EPSILON = 0.2
 # 2000 years and we're still using Greek if we want something to sound smart.
 
 
-REWARD_METRIC = "reward"
 VALUE_LOSS_METRIC = "value_loss"
 
 
@@ -48,8 +48,8 @@ class PPOTrainer(Trainer):
     ):
         super().__init__(
             standard_metric_names=[
-                REWARD_METRIC,
-                POLICY_LOSS_METRIC,
+                REWARD,
+                POLICY_LOSS,
                 VALUE_LOSS_METRIC,
             ],
             save_dir=save_dir,
@@ -283,8 +283,8 @@ class PPOTrainer(Trainer):
         mean_final_reward = float(mean(epoch_rewards))
         self.add_epoch_metrics(
             {
-                REWARD_METRIC: epoch_rewards,
-                POLICY_LOSS_METRIC: epoch_policy_losses,
+                REWARD: epoch_rewards,
+                POLICY_LOSS: epoch_policy_losses,
                 VALUE_LOSS_METRIC: epoch_value_losses,
             },
             mode,

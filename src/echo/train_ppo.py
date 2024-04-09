@@ -12,11 +12,10 @@ from tqdm import tqdm
 from src.classifiers.similarity_evaluator import SimilarityEvaluator, get_similarity_scores
 from src.datasets.sst2_dataset import SST2Dataset
 from src.generation.generative_bart import GenerativeBart
-from src.generation.ppo_trainer import EVAL, TRAIN, PPOTrainer
+from src.generation.ppo_trainer import PPOTrainer
+from src.constants import TRAIN, EVAL
 from src.generation.value_model import ValueModel
 from src.utils import get_available_torch_devices, get_next_run_subdir_name
-
-MEM_SNAPSHOT_SAVE_PATH = "snapshot.pickle"
 
 
 def get_rewards_and_nonstandard_metrics(

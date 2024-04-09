@@ -14,21 +14,25 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.classifiers.entailment_evaluator import EntailmentEvaluator
-from src.classifiers.grammaticality_evaluator import GrammaticalityEvaluator
 from src.classifiers.sentiment_classifier import SentimentClassifier
+from src.constants import (
+    GAN_GENERATED_LABEL,
+    ENTAILMENT,
+    NEGATIVITY,
+    NATURALNESS,
+    GRAMMATICALITY,
+    GAN_ACCURACY,
+    NEGATIVE,
+    POSITIVE,
+    REWARD,
+    TRAIN,
+    EVAL,
+)
 from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
-from src.generation.dpo_trainer import EVAL, TRAIN, DPOTrainer, RewardCalculator
+from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices, get_next_run_subdir_name, round_list
-
-GAN_GENERATED_LABEL = 1
-
-ENTAILMENT = "entailment_score"
-NEGATIVITY = "negativity_score"
-NATURALNESS = "gan_naturalness_score"
-GRAMMATICALITY = "grammaticality_score"
-GAN_ACCURACY = "gan_discriminator_accuracy"
 
 
 def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
@@ -55,14 +59,14 @@ class NegativizerMetricCalculator(RewardCalculator):
         self,
         entailment_classifier: EntailmentEvaluator,
         sentiment_classifier: SentimentClassifier,
-        grammaticality_evaluator: GrammaticalityEvaluator,
+        # grammaticality_evaluator: GrammaticalityEvaluator,
         gan_discriminator: GANDiscriminator,
         gan_loss: _Loss,
     ):
         super().__init__()
         self.entailment_classifier = entailment_classifier
         self.sentiment_classifier = sentiment_classifier
-        self.grammaticality_evaluator = grammaticality_evaluator
+        # self.grammaticality_evaluator = grammaticality_evaluator
         self.gan_discriminator = gan_discriminator
         self.gan_loss = gan_loss
 
@@ -72,7 +76,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         entailment_scores: list[float],
         negativity_scores: list[float],
         gan_naturalness_scores: list[float],
-        grammaticality_scores: list[float],
+        # grammaticality_scores: list[float],
     ) -> list[float]:
         if any([score < 0.8 for score in gan_naturalness_scores]):
             # GAN naturalness is the most important metric to keep high, because once it
@@ -82,7 +86,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             # We want to assign rewards based on the worst-performing metric. We also want to
             # make sure that all the generations for a given prompt are assigned rewards based
             # on the same metric, so that the trained model has clear feedback.
-            score_lists = [entailment_scores, negativity_scores, grammaticality_scores]
+            score_lists = [entailment_scores, negativity_scores]  # , grammaticality_scores]
             min_scores = [min(scores) for scores in score_lists]
             return score_lists[np.argmin(min_scores)]
 
@@ -96,19 +100,19 @@ class NegativizerMetricCalculator(RewardCalculator):
         negativity_scores = [
             float(score.item())
             for score in self.sentiment_classifier.evaluate_texts(generations, return_probs=True)[
-                :, 0
+                :, NEGATIVE
             ]
         ]
         return round_list(negativity_scores)
 
-    def get_grammaticality(self, generations: list[str]) -> list[float]:
-        grammaticality_scores = [
-            float(score.item())
-            for score in self.grammaticality_evaluator.evaluate_texts(
-                generations, return_probs=True
-            )[:, 1]
-        ]
-        return round_list(grammaticality_scores)
+    # def get_grammaticality(self, generations: list[str]) -> list[float]:
+    #     grammaticality_scores = [
+    #         float(score.item())
+    #         for score in self.grammaticality_evaluator.evaluate_texts(
+    #             generations, return_probs=True
+    #         )[:, 1]
+    #     ]
+    #     return round_list(grammaticality_scores)
 
     def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
@@ -140,7 +144,7 @@ class NegativizerMetricCalculator(RewardCalculator):
     def get_rewards(
         self, prompt: str, generations: list[str]
     ) -> tuple[list[float], list[dict[str, float]]]:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             entailment_calculation = executor.submit(
                 partial(self.get_entailment, prompt=prompt, generations=generations)
             )
@@ -150,59 +154,56 @@ class NegativizerMetricCalculator(RewardCalculator):
             gan_naturalness_calculation = executor.submit(
                 partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
             )
-            grammaticality_calculation = executor.submit(
-                partial(self.get_grammaticality, generations=generations)
-            )
+            # grammaticality_calculation = executor.submit(
+            #     partial(self.get_grammaticality, generations=generations)
+            # )
 
         entailment_scores = entailment_calculation.result()
         negativity_scores = negativity_calculation.result()
-        grammaticality_scores = grammaticality_calculation.result()
+        # grammaticality_scores = grammaticality_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
-        target_metrics = self.calculate_rewards(
-            entailment_scores, negativity_scores, gan_naturalness_scores, grammaticality_scores
+        rewards = self.calculate_rewards(
+            entailment_scores, negativity_scores, gan_naturalness_scores  # , grammaticality_scores
         )
+
+        prompts_equal_generation = [
+            int(generation.lower() == prompt.lower()) for generation in generations
+        ]
+        prompts_equal = int(generations[0] == generations[1])
 
         stats = [
             {
                 "entailment_score": entailment_score,
                 "negativity_score": negativity_score,
                 "gan_naturalness_score": gan_naturalness_score,
-                "grammaticality_score": grammaticality_score,
+                "prompt_equals_generation": prompt_equals_generation,
                 "gan_discriminator_accuracy": discriminator_accuracy,
-                "target_metric": target_metric,
+                "prompts_equal": prompts_equal,
             }
             for (
                 entailment_score,
                 negativity_score,
                 gan_naturalness_score,
-                grammaticality_score,
-                target_metric,
+                prompt_equals_generation,
             ) in zip(
                 entailment_scores,
                 negativity_scores,
                 gan_naturalness_scores,
-                grammaticality_scores,
-                target_metrics,
+                prompts_equal_generation,
             )
         ]
-        return target_metrics, stats
+        return rewards, stats
 
     def get_metric_names(self) -> list[str]:
-        return [
-            ENTAILMENT,
-            NEGATIVITY,
-            NATURALNESS,
-            GRAMMATICALITY,
-            GAN_ACCURACY,
-        ]
+        return [ENTAILMENT, NEGATIVITY, NATURALNESS, GRAMMATICALITY, GAN_ACCURACY, REWARD]
 
 
 def train(
     echo: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
-    grammaticality_evaluator: GrammaticalityEvaluator,
+    # grammaticality_evaluator: GrammaticalityEvaluator,
     gan_discriminator: GANDiscriminator,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
@@ -236,7 +237,7 @@ def train(
     metric_calculator = NegativizerMetricCalculator(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
-        grammaticality_evaluator=grammaticality_evaluator,
+        # grammaticality_evaluator=grammaticality_evaluator,
         gan_discriminator=gan_discriminator,
         gan_loss=gan_loss,
     )
@@ -301,8 +302,8 @@ def main(
 
     entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
 
-    sentiment_classifier = SentimentClassifier(entailment_classifier_device)
-    grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
+    sentiment_classifier = SentimentClassifier(entailment_classifier_device, raw_name="cnn-sst2")
+    # grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
     gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
 
     trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
@@ -311,15 +312,15 @@ def main(
             torch.load(source_model_weights_path, map_location=torch.device(trained_model_device))
         )
 
+    # Training on already negative examples is not very informative for this task.
+    # We also want to filter out short samples, which in the sst2 dataset are often incomplete
+    # sentences (for some reason). Training on such short sentences is not appropriate for this
+    # experiment, and simply hard.
     train_dataset = SST2Dataset(
-        train_split_path,
-        trained_model.tokenizer,
-        max_len,
+        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
     )
     eval_dataset = SST2Dataset(
-        eval_split_path,
-        trained_model.tokenizer,
-        max_len,
+        eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
     )
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -334,7 +335,7 @@ def main(
         trained_model,
         entailment_classifier,
         sentiment_classifier,
-        grammaticality_evaluator,
+        # grammaticality_evaluator,
         gan_discriminator,
         train_dataloader,
         eval_dataloader,

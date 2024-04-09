@@ -11,14 +11,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from numpy import mean
 
+from src.constants import TRAIN, EVAL, MODES, PLOT_AVG_WINDOW_LENGTH
 from src.utils import ListDict, get_current_git_commit_id
-
-TRAIN = "train"
-EVAL = "eval"
-MODES = [TRAIN, EVAL]
-PLOT_AVG_WINDOW_LENGTH = 16
-
-POLICY_LOSS_METRIC = "policy_loss"
 
 
 class Trainer:

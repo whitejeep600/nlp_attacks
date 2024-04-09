@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import pandas as pd
@@ -5,13 +7,28 @@ import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+from src.constants import LABEL, SENTENCE, ID
+
 
 class SST2Dataset(Dataset):
-    def __init__(self, dataset_csv_path: Path, tokenizer: PreTrainedTokenizer, max_length: int):
+    def __init__(
+        self,
+        dataset_csv_path: Path,
+        tokenizer: PreTrainedTokenizer,
+        max_length: int,
+        min_length: int | None = None,
+        filter_label: int | None = None,
+    ):
         super().__init__()
         source_df = pd.read_csv(dataset_csv_path)
 
+        if filter_label is not None:
+            source_df = source_df[source_df[LABEL] == filter_label]
+
+        if min_length is not None:
+            source_df = source_df[source_df[SENTENCE].apply(lambda x: len(x.split())) >= min_length]
         self.df = source_df
+
         self.tokenizer = tokenizer
         self.max_length = max_length
 
@@ -19,9 +36,9 @@ class SST2Dataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, i):
-        text = self.df.iloc[i, :]["sentence"]
-        label = self.df.iloc[i, :]["label"]
-        id = self.df.iloc[i, :]["idx"]
+        text = self.df.iloc[i, :][SENTENCE]
+        label = self.df.iloc[i, :][LABEL]
+        id = self.df.iloc[i, :][ID]
         tokenized_text = self.tokenizer(
             text,
             return_tensors="pt",
@@ -38,6 +55,6 @@ class SST2Dataset(Dataset):
             "input_ids": tokenized_text["input_ids"].flatten(),
             "attention_mask": tokenized_text["attention_mask"].flatten(),
             "original_seq": original_seq,
-            "label": torch.tensor(label),
-            "id": torch.tensor(id),
+            LABEL: torch.tensor(label),
+            ID: torch.tensor(id),
         }
