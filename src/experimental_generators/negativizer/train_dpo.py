@@ -184,11 +184,11 @@ class NegativizerMetricCalculator(RewardCalculator):
 
 
 def train(
-    echo: GenerativeBart,
+    trained_model: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     gan_discriminator: GANDiscriminator,
-    reference_model_device: torch.device,
+    reference_model: GenerativeBart,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     n_epochs: int,
@@ -207,7 +207,7 @@ def train(
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    negativizer_optimizer = AdamW(echo.parameters(), lr=0)
+    negativizer_optimizer = AdamW(trained_model.parameters(), lr=0)
 
     entailment_classifier.eval()
 
@@ -224,10 +224,10 @@ def train(
     )
 
     dpo_trainer = DPOTrainer(
-        trained_model=echo,
+        trained_model=trained_model,
         metric_calculator=metric_calculator,
         trained_model_optimizer=negativizer_optimizer,
-        reference_model_device=reference_model_device,
+        reference_model=reference_model,
         beta=beta,
         temperature=temperature,
         attacker_lr=attacker_lr,
@@ -289,6 +289,10 @@ def main(
         source_model_name, max_len, generator_devices, source_model_weights_path
     )
 
+    reference_model = GenerativeBart(
+        source_model_name, max_len, [reference_model_device], source_model_weights_path
+    )
+
     # Training on already negative examples is not very informative for this task.
     # We also want to filter out short samples, which in the sst2 dataset are often incomplete
     # sentences (for some reason). Training on such short sentences is not appropriate for this
@@ -313,7 +317,7 @@ def main(
         entailment_classifier,
         sentiment_classifier,
         gan_discriminator,
-        reference_model_device,
+        reference_model,
         train_dataloader,
         eval_dataloader,
         n_epochs,

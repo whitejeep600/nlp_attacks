@@ -26,11 +26,6 @@ class GenerativeBart:
         self.stop_token = self.token_to_tokenizer_id("</s>")
         self.start_token = self.token_to_tokenizer_id("<s>")
 
-    def to_single_device(self, device: torch.device) -> None:
-        self.bert = self.bert.module
-        self.bert.to(device)
-        self.device = device
-
     def train(self):
         self.bert.train()
 

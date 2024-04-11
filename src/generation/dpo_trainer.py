@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 from typing import Any
 
@@ -87,7 +86,7 @@ class DPOTrainer(Trainer):
         trained_model: GenerativeBart,
         metric_calculator: RewardCalculator,
         trained_model_optimizer: Optimizer,
-        reference_model_device: torch.device,
+        reference_model: GenerativeBart,
         beta: float,
         temperature: float,
         attacker_lr: float,
@@ -108,9 +107,7 @@ class DPOTrainer(Trainer):
         # for Kullback-Leibler divergence between the trained and reference policy.
         self.trained_model = trained_model
         self.metric_calculator = metric_calculator
-        self.reference_model = copy.deepcopy(self.trained_model)
-        self.reference_model.to_single_device(reference_model_device)
-        self.reference_model.eval()
+        self.reference_model = reference_model
         self.trained_model_optimizer = trained_model_optimizer
         self.beta = beta
         self.temperature = temperature
