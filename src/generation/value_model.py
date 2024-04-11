@@ -9,11 +9,7 @@ from transformers import AutoTokenizer, BertModel
 
 class ValueModel(torch.nn.Module):
     def __init__(
-        self,
-        model_name: str,
-        max_length: int,
-        device: torch.device,
-        weights_path: Path | None = None,
+        self, model_name: str, max_length: int, device: str, weights_path: Path | None = None
     ):
         super(ValueModel, self).__init__()
         self.model = BertModel.from_pretrained(model_name)

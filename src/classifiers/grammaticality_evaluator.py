@@ -7,7 +7,7 @@ from src.classifiers.base_classifier import Classifier
 
 
 class GrammaticalityEvaluator(Classifier):
-    def __init__(self, device: torch.device):
+    def __init__(self, device: str):
         super().__init__()
 
         raw_name = "bert-base-uncased-cola"

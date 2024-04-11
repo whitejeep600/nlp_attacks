@@ -44,7 +44,7 @@ def train(
     n_epochs: int,
     attacker_lr: float,
     value_lr: float,
-    device: torch.device,
+    device: str,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -120,7 +120,7 @@ def main(
         value_device = devices[0]
     similarity_evaluator = SimilarityEvaluator(similarity_evaluator_name, trainer_device)
     value_model = ValueModel(value_model_name, max_len, value_device)
-    echo = GenerativeBart(source_model_name, max_len, [trainer_device])
+    echo = GenerativeBart(source_model_name, max_len, trainer_device)
     train_dataset = SST2Dataset(
         train_split_path,
         echo.tokenizer,
