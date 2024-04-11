@@ -109,7 +109,7 @@ class DPOTrainer(Trainer):
         self.trained_model = trained_model
         self.metric_calculator = metric_calculator
         self.reference_model = copy.deepcopy(self.trained_model)
-        self.reference_model.to(reference_model_device)
+        self.reference_model.to_single_device(reference_model_device)
         self.reference_model.eval()
         self.trained_model_optimizer = trained_model_optimizer
         self.beta = beta
