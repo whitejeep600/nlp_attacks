@@ -274,9 +274,9 @@ def main(
     if len(devices) > 1:
         evaluator_models_device = devices[0]
         reference_model_device = devices[0]
-        generator_devices = devices[1:]
+        generator_device = devices[1]
     else:
-        generator_devices = [devices[0]]
+        generator_device = devices[0]
         evaluator_models_device = devices[0]
         reference_model_device = devices[0]
 
@@ -286,11 +286,11 @@ def main(
     gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
 
     trained_model = GenerativeBart(
-        source_model_name, max_len, generator_devices, source_model_weights_path
+        source_model_name, max_len, generator_device, source_model_weights_path
     )
 
     reference_model = GenerativeBart(
-        source_model_name, max_len, [reference_model_device], source_model_weights_path
+        source_model_name, max_len, reference_model_device, source_model_weights_path
     )
 
     # Training on already negative examples is not very informative for this task.

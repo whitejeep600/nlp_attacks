@@ -11,16 +11,15 @@ class GenerativeBart:
         self,
         model_name: str,
         max_length: int,
-        devices: list[torch.device],
+        device: torch.device,
         weights_path: Path | None = None,
     ):
         super().__init__()
-        bert = BartForConditionalGeneration.from_pretrained(model_name)
+        self.bert = BartForConditionalGeneration.from_pretrained(model_name)
         if weights_path is not None:
-            bert.load_state_dict(torch.load(weights_path, map_location=torch.device(devices[0])))
-        bert.to(devices[0])
-        self.bert = torch.nn.DataParallel(bert, device_ids=devices)
-        self.device = devices[0]
+            self.bert.load_state_dict(torch.load(weights_path, map_location=device))
+        self.bert.to(device)
+        self.device = device
         self.tokenizer = BartTokenizer.from_pretrained(model_name)
         self.max_length = max_length
         self.stop_token = self.token_to_tokenizer_id("</s>")
