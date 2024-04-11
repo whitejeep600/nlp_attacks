@@ -8,7 +8,7 @@ from src.classifiers.base_classifier import Classifier
 
 
 class SentimentClassifier(Classifier):
-    def __init__(self, device: str, raw_name: str = "bert-base-uncased-sst2"):
+    def __init__(self, device: torch.device, raw_name: str = "bert-base-uncased-sst2"):
         super().__init__()
 
         if raw_name in HUGGINGFACE_MODELS:

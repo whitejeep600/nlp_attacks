@@ -43,29 +43,17 @@ def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> f
     return weights_array.sum() / (weights_array / numbers_array).sum()
 
 
-def calculate_reward(
-    entailment_score: float,
-    negativity_score: float,
-    gan_naturalness_score: float,
-    grammaticality_score: float,
-) -> float:
-    gan_naturalness_score = min(1.0, gan_naturalness_score)
-    return min(entailment_score, negativity_score, gan_naturalness_score, grammaticality_score)
-
-
 class NegativizerMetricCalculator(RewardCalculator):
     def __init__(
         self,
         entailment_classifier: EntailmentEvaluator,
         sentiment_classifier: SentimentClassifier,
-        # grammaticality_evaluator: GrammaticalityEvaluator,
         gan_discriminator: GANDiscriminator,
         gan_loss: _Loss,
     ):
         super().__init__()
         self.entailment_classifier = entailment_classifier
         self.sentiment_classifier = sentiment_classifier
-        # self.grammaticality_evaluator = grammaticality_evaluator
         self.gan_discriminator = gan_discriminator
         self.gan_loss = gan_loss
 
@@ -75,17 +63,16 @@ class NegativizerMetricCalculator(RewardCalculator):
         entailment_scores: list[float],
         negativity_scores: list[float],
         gan_naturalness_scores: list[float],
-        # grammaticality_scores: list[float],
     ) -> list[float]:
         if any([score < 0.8 for score in gan_naturalness_scores]):
-            # GAN naturalness is the most important metric to keep high, because once it
+            # GAN naturalness is the most important metric to keep high, because it
             # improves the stability of the training.
             return gan_naturalness_scores
         else:
             # We want to assign rewards based on the worst-performing metric. We also want to
             # make sure that all the generations for a given prompt are assigned rewards based
             # on the same metric, so that the trained model has clear feedback.
-            score_lists = [entailment_scores, negativity_scores]  # , grammaticality_scores]
+            score_lists = [entailment_scores, negativity_scores]
             min_scores = [min(scores) for scores in score_lists]
             return score_lists[np.argmin(min_scores)]
 
@@ -103,15 +90,6 @@ class NegativizerMetricCalculator(RewardCalculator):
             ]
         ]
         return round_list(negativity_scores)
-
-    # def get_grammaticality(self, generations: list[str]) -> list[float]:
-    #     grammaticality_scores = [
-    #         float(score.item())
-    #         for score in self.grammaticality_evaluator.evaluate_texts(
-    #             generations, return_probs=True
-    #         )[:, 1]
-    #     ]
-    #     return round_list(grammaticality_scores)
 
     def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
@@ -153,17 +131,13 @@ class NegativizerMetricCalculator(RewardCalculator):
             gan_naturalness_calculation = executor.submit(
                 partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
             )
-            # grammaticality_calculation = executor.submit(
-            #     partial(self.get_grammaticality, generations=generations)
-            # )
 
         entailment_scores = entailment_calculation.result()
         negativity_scores = negativity_calculation.result()
-        # grammaticality_scores = grammaticality_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
         rewards = self.calculate_rewards(
-            entailment_scores, negativity_scores, gan_naturalness_scores  # , grammaticality_scores
+            entailment_scores, negativity_scores, gan_naturalness_scores
         )
 
         prompts_equal_generation = [
@@ -213,16 +187,14 @@ def train(
     echo: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
-    # grammaticality_evaluator: GrammaticalityEvaluator,
     gan_discriminator: GANDiscriminator,
+    reference_model_device: torch.device,
     train_dataloader: DataLoader,
     eval_dataloader: DataLoader,
     n_epochs: int,
     attacker_lr: float,
     beta: float,
     temperature,
-    trained_model_device: str,
-    reference_model_device: str,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -247,7 +219,6 @@ def train(
     metric_calculator = NegativizerMetricCalculator(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
-        # grammaticality_evaluator=grammaticality_evaluator,
         gan_discriminator=gan_discriminator,
         gan_loss=gan_loss,
     )
@@ -256,12 +227,11 @@ def train(
         trained_model=echo,
         metric_calculator=metric_calculator,
         trained_model_optimizer=negativizer_optimizer,
+        reference_model_device=reference_model_device,
         beta=beta,
         temperature=temperature,
         attacker_lr=attacker_lr,
         max_len=max_len,
-        trained_model_device=trained_model_device,
-        reference_model_device=reference_model_device,
         save_dir=save_dir,
         call_parameters_save_path=call_parameters_save_path,
         params_to_save=params_to_save,
@@ -302,25 +272,22 @@ def main(
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
-        trained_model_device = devices[0]
-        entailment_classifier_device = devices[1]
-        reference_model_device = devices[1]
+        evaluator_models_device = devices[0]
+        reference_model_device = devices[0]
+        generator_devices = devices[1:]
     else:
-        trained_model_device = devices[0]
-        entailment_classifier_device = devices[0]
+        generator_devices = [devices[0]]
+        evaluator_models_device = devices[0]
         reference_model_device = devices[0]
 
-    entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
+    entailment_classifier = EntailmentEvaluator(evaluator_models_device)
 
-    sentiment_classifier = SentimentClassifier(entailment_classifier_device, raw_name="cnn-sst2")
-    # grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
-    gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
+    sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
+    gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
 
-    trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
-    if source_model_weights_path is not None:
-        trained_model.bert.load_state_dict(
-            torch.load(source_model_weights_path, map_location=torch.device(trained_model_device))
-        )
+    trained_model = GenerativeBart(
+        source_model_name, max_len, generator_devices, source_model_weights_path
+    )
 
     # Training on already negative examples is not very informative for this task.
     # We also want to filter out short samples, which in the sst2 dataset are often incomplete
@@ -345,16 +312,14 @@ def main(
         trained_model,
         entailment_classifier,
         sentiment_classifier,
-        # grammaticality_evaluator,
         gan_discriminator,
+        reference_model_device,
         train_dataloader,
         eval_dataloader,
         n_epochs,
         attacker_lr,
         beta,
         temperature,
-        trained_model_device,
-        reference_model_device,
         max_len,
         save_dir,
         call_parameters_save_path,

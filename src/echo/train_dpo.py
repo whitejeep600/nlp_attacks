@@ -64,8 +64,7 @@ def train(
     attacker_lr: float,
     beta: float,
     temperature: float,
-    trained_model_device: str,
-    reference_model_device: str,
+    reference_model_device: torch.device,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -94,7 +93,6 @@ def train(
         temperature=temperature,
         attacker_lr=attacker_lr,
         max_len=max_len,
-        trained_model_device=trained_model_device,
         reference_model_device=reference_model_device,
         save_dir=save_dir,
         call_parameters_save_path=call_parameters_save_path,
@@ -144,7 +142,7 @@ def main(
     similarity_evaluator = SimilarityEvaluator(
         similarity_evaluator_name, similarity_evaluator_device
     )
-    echo = GenerativeBart(source_model_name, max_len, trained_model_device)
+    echo = GenerativeBart(source_model_name, max_len, [trained_model_device])
     train_dataset = SST2Dataset(
         train_split_path,
         echo.tokenizer,
@@ -173,7 +171,6 @@ def main(
         attacker_lr,
         beta,
         temperature,
-        trained_model_device,
         reference_model_device,
         max_len,
         save_dir,

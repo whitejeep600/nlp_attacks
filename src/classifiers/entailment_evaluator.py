@@ -7,7 +7,7 @@ from src.classifiers.base_classifier import Classifier
 
 
 class EntailmentEvaluator(Classifier):
-    def __init__(self, device: str):
+    def __init__(self, device: torch.device):
         super().__init__()
 
         raw_name = "bert-base-uncased-snli"

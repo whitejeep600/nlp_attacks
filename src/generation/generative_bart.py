@@ -8,22 +8,28 @@ from transformers import BartForConditionalGeneration, BartTokenizer
 
 class GenerativeBart:
     def __init__(
-        self, model_name: str, max_length: int, device: str, weights_path: Path | None = None
+        self,
+        model_name: str,
+        max_length: int,
+        devices: list[torch.device],
+        weights_path: Path | None = None,
     ):
         super().__init__()
-        self.bert = BartForConditionalGeneration.from_pretrained(model_name)
+        bert = BartForConditionalGeneration.from_pretrained(model_name)
         if weights_path is not None:
-            self.bert.load_state_dict(torch.load(weights_path, map_location=torch.device(device)))
-        self.bert.to(device)
-        self.device = device
+            bert.load_state_dict(torch.load(weights_path, map_location=torch.device(devices[0])))
+        bert.to(devices[0])
+        self.bert = torch.nn.DataParallel(bert, device_ids=devices)
+        self.device = devices[0]
         self.tokenizer = BartTokenizer.from_pretrained(model_name)
         self.max_length = max_length
         self.stop_token = self.token_to_tokenizer_id("</s>")
         self.start_token = self.token_to_tokenizer_id("<s>")
 
-    def to(self, device: str):
-        self.device = device
+    def to(self, device: torch.device) -> None:
+        self.bert = torch.nn.DataParallel(self.bert, device_ids=[device])
         self.bert.to(device)
+        self.device = device
 
     def train(self):
         self.bert.train()

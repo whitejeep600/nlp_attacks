@@ -87,12 +87,11 @@ class DPOTrainer(Trainer):
         trained_model: GenerativeBart,
         metric_calculator: RewardCalculator,
         trained_model_optimizer: Optimizer,
+        reference_model_device: torch.device,
         beta: float,
         temperature: float,
         attacker_lr: float,
         max_len: int,
-        trained_model_device: str,
-        reference_model_device: str,
         save_dir: Path,
         call_parameters_save_path: Path,
         params_to_save: dict,
@@ -113,8 +112,6 @@ class DPOTrainer(Trainer):
         self.reference_model.to(reference_model_device)
         self.reference_model.eval()
         self.trained_model_optimizer = trained_model_optimizer
-        self.trained_model_device = trained_model_device
-        self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
         self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
@@ -154,11 +151,11 @@ class DPOTrainer(Trainer):
             with torch.no_grad():
                 new_reference_logits = (
                     self.reference_model.bert(
-                        input_ids=batch_inputs.to(self.reference_model_device),
-                        decoder_input_ids=all_decoded_ids.to(self.reference_model_device),
+                        input_ids=batch_inputs.to(self.reference_model.device),
+                        decoder_input_ids=all_decoded_ids.to(self.reference_model.device),
                     )
                     .logits[:, -1, :]
-                    .to(self.trained_model_device)
+                    .to(self.trained_model.device)
                 )
             new_probabilities = torch.softmax(new_logits / self.temperature, dim=-1)
             new_reference_probabilities = torch.softmax(
@@ -174,7 +171,7 @@ class DPOTrainer(Trainer):
                     new_reference_probabilities[i][next_ids[i]].reshape(1)
                 )
             all_decoded_ids = torch.cat((all_decoded_ids, next_ids), dim=-1)
-            if (next_ids == self.trained_model.bert.generation_config.eos_token_id).all():
+            if (next_ids == self.trained_model.stop_token).all():
                 break
         decoded_id_single_tensors = [decoded_tensor for decoded_tensor in all_decoded_ids]
         probability_single_tensors = [
@@ -215,7 +212,7 @@ class DPOTrainer(Trainer):
             each SampleGeneration itself contains multiple generations for a single samples
 
         """
-        batch_input_ids = batch_input_ids.to(self.trained_model_device)
+        batch_input_ids = batch_input_ids.to(self.trained_model.device)
         all_generations: list[SampleGenerations] = []
         generation_ids, probs, reference_probs = self.batch_generate(
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
@@ -339,7 +336,7 @@ class DPOTrainer(Trainer):
             leave=False,
             position=1,
         ):
-            input_ids = batch["input_ids"].to(self.trained_model_device)
+            input_ids = batch["input_ids"].to(self.trained_model.device)
             original_seqs = batch["original_seq"]
             generations = self.sample_two_generations_per_sample(input_ids, original_seqs)
             all_epoch_batch_generations.append(generations)
