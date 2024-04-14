@@ -64,6 +64,7 @@ def train(
     attacker_lr: float,
     beta: float,
     temperature: float,
+    trained_model_device: torch.device,
     reference_model: GenerativeBart,
     max_len: int,
     save_dir: Path,
@@ -132,22 +133,21 @@ def main(
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
-        trained_model_devices = [devices[0]] + devices[2:]
+        trained_model_device = devices[0]
         similarity_evaluator_device = devices[1]
         reference_model_device = devices[1]
     else:
-        trained_model_devices = [devices[0]]
+        trained_model_device = devices[0]
         similarity_evaluator_device = devices[0]
         reference_model_device = devices[0]
-
     similarity_evaluator = SimilarityEvaluator(
         similarity_evaluator_name, similarity_evaluator_device
     )
-    echo = GenerativeBart(source_model_name, max_len, trained_model_devices)
+    echo = GenerativeBart(source_model_name, max_len, trained_model_device)
     reference_model = GenerativeBart(
         source_model_name,
         max_len,
-        [reference_model_device],
+        reference_model_device,
     )
     train_dataset = SST2Dataset(
         train_split_path,
@@ -177,6 +177,7 @@ def main(
         attacker_lr,
         beta,
         temperature,
+        trained_model_device,
         reference_model,
         max_len,
         save_dir,
