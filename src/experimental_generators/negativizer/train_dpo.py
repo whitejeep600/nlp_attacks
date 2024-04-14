@@ -264,21 +264,21 @@ def main(
 ):
     devices = get_available_torch_devices()
     if len(devices) > 1:
-        trained_model_device = devices[0]
-        entailment_classifier_device = devices[1]
+        evaluator_models_device = devices[1]
         reference_model_device = devices[1]
+        generator_device = devices[0]
     else:
-        trained_model_device = devices[0]
-        entailment_classifier_device = devices[0]
+        generator_device = devices[0]
+        evaluator_models_device = devices[0]
         reference_model_device = devices[0]
 
-    entailment_classifier = EntailmentEvaluator(entailment_classifier_device)
+    entailment_classifier = EntailmentEvaluator(evaluator_models_device)
 
-    sentiment_classifier = SentimentClassifier(entailment_classifier_device, raw_name="cnn-sst2")
-    gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
+    sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
+    gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
 
     trained_model = GenerativeBart(
-        source_model_name, max_len, trained_model_device, source_model_weights_path
+        source_model_name, max_len, generator_device, source_model_weights_path
     )
     reference_model = GenerativeBart(
         source_model_name, max_len, reference_model_device, source_model_weights_path
@@ -314,7 +314,7 @@ def main(
         attacker_lr,
         beta,
         temperature,
-        trained_model_device,
+        generator_device,
         reference_model,
         max_len,
         save_dir,
