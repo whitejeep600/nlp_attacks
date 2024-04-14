@@ -94,7 +94,6 @@ def train(
         temperature=temperature,
         attacker_lr=attacker_lr,
         max_len=max_len,
-        trained_model_device=trained_model_device,
         reference_model=reference_model,
         save_dir=save_dir,
         call_parameters_save_path=call_parameters_save_path,
