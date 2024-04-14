@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import subprocess
 from pathlib import Path
@@ -79,3 +81,12 @@ def get_next_run_subdir_name(run_save_dir: Path) -> str:
 
 def round_list(target_list: list[float]) -> list[float]:
     return [round(x, 3) for x in target_list]
+
+
+def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
+    numbers_array = np.array(numbers)
+    if weights is None:
+        weights_array = np.ones_like(numbers_array)
+    else:
+        weights_array = np.array(weights)
+    return weights_array.sum() / (weights_array / numbers_array).sum()

@@ -34,24 +34,6 @@ from src.generation.generative_bart import GenerativeBart
 from src.utils import get_available_torch_devices, get_next_run_subdir_name, round_list
 
 
-def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> float:
-    numbers_array = np.array(numbers)
-    if weights is None:
-        weights_array = np.ones_like(numbers_array)
-    else:
-        weights_array = np.array(weights)
-    return weights_array.sum() / (weights_array / numbers_array).sum()
-
-
-def calculate_reward(
-    entailment_score: float,
-    negativity_score: float,
-    gan_naturalness_score: float,
-) -> float:
-    gan_naturalness_score = min(1.0, gan_naturalness_score)
-    return min(entailment_score, negativity_score, gan_naturalness_score)
-
-
 class NegativizerMetricCalculator(RewardCalculator):
     def __init__(
         self,
@@ -193,7 +175,7 @@ class NegativizerMetricCalculator(RewardCalculator):
 
 
 def train(
-    echo: GenerativeBart,
+    trained_model: GenerativeBart,
     entailment_classifier: EntailmentEvaluator,
     sentiment_classifier: SentimentClassifier,
     gan_discriminator: GANDiscriminator,
@@ -217,7 +199,7 @@ def train(
     save_dir.mkdir(parents=True, exist_ok=True)
     call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    negativizer_optimizer = AdamW(echo.parameters(), lr=0)
+    negativizer_optimizer = AdamW(trained_model.parameters(), lr=0)
 
     entailment_classifier.eval()
 
@@ -234,7 +216,7 @@ def train(
     )
 
     dpo_trainer = DPOTrainer(
-        trained_model=echo,
+        trained_model=trained_model,
         metric_calculator=metric_calculator,
         trained_model_optimizer=negativizer_optimizer,
         beta=beta,
@@ -344,31 +326,31 @@ def main(
 
 
 if __name__ == "__main__":
-    echo_params = yaml.safe_load(open("params.yaml"))[
+    train_params = yaml.safe_load(open("params.yaml"))[
         "src.experimental_generators.negativizer.train_dpo"
     ]
 
-    source_model_name = echo_params["source_model_name"]
+    source_model_name = train_params["source_model_name"]
     source_model_weights_path = (
-        Path(echo_params["source_model_weights_path"])
-        if echo_params["source_model_weights_path"] is not None
+        Path(train_params["source_model_weights_path"])
+        if train_params["source_model_weights_path"] is not None
         else None
     )
 
-    train_split_path = Path(echo_params["train_split_path"])
-    eval_split_path = Path(echo_params["eval_split_path"])
+    train_split_path = Path(train_params["train_split_path"])
+    eval_split_path = Path(train_params["eval_split_path"])
 
-    max_len = int(echo_params["max_len"])
-    batch_size = int(echo_params["batch_size"])
-    n_epochs = int(echo_params["n_epochs"])
-    attacker_lr = float(echo_params["attacker_lr"])
-    gan_lr = float(echo_params["gan_lr"])
-    beta = float(echo_params["beta"])
-    temperature = float(echo_params["temperature"])
-    n_max_train_samples: int | None = echo_params["n_max_train_samples"]
+    max_len = int(train_params["max_len"])
+    batch_size = int(train_params["batch_size"])
+    n_epochs = int(train_params["n_epochs"])
+    attacker_lr = float(train_params["attacker_lr"])
+    gan_lr = float(train_params["gan_lr"])
+    beta = float(train_params["beta"])
+    temperature = float(train_params["temperature"])
+    n_max_train_samples: int | None = train_params["n_max_train_samples"]
 
-    save_dir = Path(echo_params["save_dir"])
-    call_parameters_save_path = Path(echo_params["call_parameters_save_path"])
+    save_dir = Path(train_params["save_dir"])
+    call_parameters_save_path = Path(train_params["call_parameters_save_path"])
 
     main(
         source_model_name,
@@ -383,7 +365,7 @@ if __name__ == "__main__":
         temperature,
         save_dir,
         call_parameters_save_path,
-        echo_params,
+        train_params,
         n_max_train_samples,
         source_model_weights_path,
     )

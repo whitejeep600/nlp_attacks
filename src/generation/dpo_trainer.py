@@ -90,7 +90,6 @@ class DPOTrainer(Trainer):
         temperature: float,
         attacker_lr: float,
         max_len: int,
-        trained_model_device: torch.device,
         reference_model: GenerativeBart,
         save_dir: Path,
         call_parameters_save_path: Path,
@@ -111,7 +110,6 @@ class DPOTrainer(Trainer):
         self.reference_model = reference_model
         self.reference_model.eval()
         self.trained_model_optimizer = trained_model_optimizer
-        self.trained_model_device = trained_model_device
         self.beta = beta
         self.temperature = temperature
         self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
@@ -155,7 +153,7 @@ class DPOTrainer(Trainer):
                         decoder_input_ids=all_decoded_ids.to(self.reference_model.device),
                     )
                     .logits[:, -1, :]
-                    .to(self.trained_model_device)
+                    .to(self.trained_model.device)
                 )
             new_probabilities = torch.softmax(new_logits / self.temperature, dim=-1)
             new_reference_probabilities = torch.softmax(
@@ -212,7 +210,7 @@ class DPOTrainer(Trainer):
             each SampleGeneration itself contains multiple generations for a single samples
 
         """
-        batch_input_ids = batch_input_ids.to(self.trained_model_device)
+        batch_input_ids = batch_input_ids.to(self.trained_model.device)
         all_generations: list[SampleGenerations] = []
         generation_ids, probs, reference_probs = self.batch_generate(
             torch.repeat_interleave(batch_input_ids, 2, dim=0),
@@ -336,7 +334,7 @@ class DPOTrainer(Trainer):
             leave=False,
             position=1,
         ):
-            input_ids = batch["input_ids"].to(self.trained_model_device)
+            input_ids = batch["input_ids"].to(self.trained_model.device)
             original_seqs = batch["original_seq"]
             generations = self.sample_two_generations_per_sample(input_ids, original_seqs)
             all_epoch_batch_generations.append(generations)
