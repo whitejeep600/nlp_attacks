@@ -23,7 +23,7 @@ def get_rewards_and_nonstandard_metrics(
     batch_prefixes: list[list[str]],
     original_seqs: list[str],
     similarity_evaluator: SimilarityEvaluator,
-    device: str,
+    device: torch.device,
 ) -> tuple[list[torch.Tensor], dict[str, float]]:
     similarity_scores = get_similarity_scores(
         batch_prefixes, original_seqs, similarity_evaluator, device
@@ -44,7 +44,7 @@ def train(
     n_epochs: int,
     attacker_lr: float,
     value_lr: float,
-    device: str,
+    device: torch.device,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,

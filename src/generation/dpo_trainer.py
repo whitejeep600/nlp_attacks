@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +90,7 @@ class DPOTrainer(Trainer):
         temperature: float,
         attacker_lr: float,
         max_len: int,
-        trained_model_device: str,
+        trained_model_device: torch.device,
         reference_model: GenerativeBart,
         save_dir: Path,
         call_parameters_save_path: Path,

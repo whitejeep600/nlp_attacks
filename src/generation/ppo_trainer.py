@@ -41,7 +41,7 @@ class PPOTrainer(Trainer):
         trained_model_optimizer: Optimizer,
         value_model_optimizer: Optimizer,
         max_len: int,
-        device: str,
+        device: torch.device,
         save_dir: Path,
         call_parameters_save_path: Path,
         params_to_save: dict,

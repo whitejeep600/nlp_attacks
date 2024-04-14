@@ -221,7 +221,7 @@ def train(
     attacker_lr: float,
     beta: float,
     temperature,
-    trained_model_device: str,
+    trained_model_device: torch.device,
     reference_model: GenerativeBart,
     max_len: int,
     save_dir: Path,
@@ -316,8 +316,12 @@ def main(
     # grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
     gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
 
-    trained_model = GenerativeBart(source_model_name, max_len, trained_model_device, source_model_weights_path)
-    reference_model = GenerativeBart(source_model_name, max_len, reference_model_device, source_model_weights_path)
+    trained_model = GenerativeBart(
+        source_model_name, max_len, trained_model_device, source_model_weights_path
+    )
+    reference_model = GenerativeBart(
+        source_model_name, max_len, reference_model_device, source_model_weights_path
+    )
 
     # Training on already negative examples is not very informative for this task.
     # We also want to filter out short samples, which in the sst2 dataset are often incomplete

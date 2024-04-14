@@ -23,7 +23,7 @@ class GanDiscriminatorModule(nn.Module):
 
 
 class GANDiscriminator:
-    def __init__(self, device: str, max_length: int, lr: float):
+    def __init__(self, device: torch.device, max_length: int, lr: float):
         super().__init__()
         model_name = "bert-base-uncased"
         self.module = GanDiscriminatorModule(model_name)

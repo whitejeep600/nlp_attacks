@@ -19,11 +19,11 @@ def get_length_without_padding(t: torch.Tensor, stop_token: int) -> int:
         return int((t[1:] == stop_token).nonzero()[0][0].item()) + 2
 
 
-def get_available_torch_devices() -> list[str]:
+def get_available_torch_devices() -> list[torch.device]:
     if torch.cuda.is_available():
-        return [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+        return [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
     else:
-        return ["cpu"]
+        return [torch.device("cpu")]
 
 
 def all_equal(values) -> bool:

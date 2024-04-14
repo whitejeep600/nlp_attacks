@@ -5,7 +5,7 @@ from src.utils import get_ceil_power_of_2
 
 
 class SimilarityEvaluator:
-    def __init__(self, model_name: str, device: str):
+    def __init__(self, model_name: str, device: torch.device):
         self.model = SentenceTransformer(model_name)
         self.model.to(device)
         self.eval()
@@ -48,7 +48,7 @@ def get_similarity_scores(
     batch_prefixes: list[list[str]],
     original_seqs: list[str],
     similarity_evaluator: SimilarityEvaluator,
-    device: str,
+    device: torch.device,
 ) -> list[torch.Tensor]:
     similarity_scores = [
         torch.Tensor(similarity_evaluator.evaluate_many_to_one(sample_prefixes, original_seq)).to(
