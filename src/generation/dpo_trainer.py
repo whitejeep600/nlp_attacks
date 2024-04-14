@@ -169,7 +169,7 @@ class DPOTrainer(Trainer):
                     new_reference_probabilities[i][next_ids[i]].reshape(1)
                 )
             all_decoded_ids = torch.cat((all_decoded_ids, next_ids), dim=-1)
-            if (next_ids == self.trained_model.bert.generation_config.eos_token_id).all():
+            if (next_ids == self.trained_model.stop_token).all():
                 break
         decoded_id_single_tensors = [decoded_tensor for decoded_tensor in all_decoded_ids]
         probability_single_tensors = [
