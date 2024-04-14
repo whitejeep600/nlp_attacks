@@ -222,7 +222,7 @@ def train(
     beta: float,
     temperature,
     trained_model_device: str,
-    reference_model_device: str,
+    reference_model: GenerativeBart,
     max_len: int,
     save_dir: Path,
     call_parameters_save_path: Path,
@@ -261,7 +261,7 @@ def train(
         attacker_lr=attacker_lr,
         max_len=max_len,
         trained_model_device=trained_model_device,
-        reference_model_device=reference_model_device,
+        reference_model=reference_model,
         save_dir=save_dir,
         call_parameters_save_path=call_parameters_save_path,
         params_to_save=params_to_save,
@@ -316,11 +316,8 @@ def main(
     # grammaticality_evaluator = GrammaticalityEvaluator(entailment_classifier_device)
     gan_discriminator = GANDiscriminator(entailment_classifier_device, max_len, gan_lr)
 
-    trained_model = GenerativeBart(source_model_name, max_len, trained_model_device)
-    if source_model_weights_path is not None:
-        trained_model.bert.load_state_dict(
-            torch.load(source_model_weights_path, map_location=torch.device(trained_model_device))
-        )
+    trained_model = GenerativeBart(source_model_name, max_len, trained_model_device, source_model_weights_path)
+    reference_model = GenerativeBart(source_model_name, max_len, reference_model_device, source_model_weights_path)
 
     # Training on already negative examples is not very informative for this task.
     # We also want to filter out short samples, which in the sst2 dataset are often incomplete
@@ -354,7 +351,7 @@ def main(
         beta,
         temperature,
         trained_model_device,
-        reference_model_device,
+        reference_model,
         max_len,
         save_dir,
         call_parameters_save_path,

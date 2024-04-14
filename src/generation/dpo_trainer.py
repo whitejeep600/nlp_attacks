@@ -92,7 +92,7 @@ class DPOTrainer(Trainer):
         attacker_lr: float,
         max_len: int,
         trained_model_device: str,
-        reference_model_device: str,
+        reference_model: GenerativeBart,
         save_dir: Path,
         call_parameters_save_path: Path,
         params_to_save: dict,
@@ -109,12 +109,10 @@ class DPOTrainer(Trainer):
         # for Kullback-Leibler divergence between the trained and reference policy.
         self.trained_model = trained_model
         self.metric_calculator = metric_calculator
-        self.reference_model = copy.deepcopy(self.trained_model)
-        self.reference_model.to(reference_model_device)
+        self.reference_model = reference_model
         self.reference_model.eval()
         self.trained_model_optimizer = trained_model_optimizer
         self.trained_model_device = trained_model_device
-        self.reference_model_device = reference_model_device
         self.beta = beta
         self.temperature = temperature
         self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
@@ -154,8 +152,8 @@ class DPOTrainer(Trainer):
             with torch.no_grad():
                 new_reference_logits = (
                     self.reference_model.bert(
-                        input_ids=batch_inputs.to(self.reference_model_device),
-                        decoder_input_ids=all_decoded_ids.to(self.reference_model_device),
+                        input_ids=batch_inputs.to(self.reference_model.device),
+                        decoder_input_ids=all_decoded_ids.to(self.reference_model.device),
                     )
                     .logits[:, -1, :]
                     .to(self.trained_model_device)
