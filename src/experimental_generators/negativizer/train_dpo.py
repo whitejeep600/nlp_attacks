@@ -55,23 +55,41 @@ class NegativizerMetricCalculator(RewardCalculator):
         negativity_scores: list[float],
         gan_naturalness_scores: list[float],
     ) -> list[float]:
-        if any([score < 0.8 for score in gan_naturalness_scores]):
-            # GAN naturalness is the most important metric to keep high, because once it
-            # improves the stability of the training.
-            return gan_naturalness_scores
-        else:
-            # We want to assign rewards based on the worst-performing metric. We also want to
-            # make sure that all the generations for a given prompt are assigned rewards based
-            # on the same metric, so that the trained model has clear feedback.
-            score_lists = [entailment_scores, negativity_scores]
-            min_scores = [min(scores) for scores in score_lists]
-            return score_lists[np.argmin(min_scores)]
+        allowed_naturalness_threshold = 0.8
+        naturalness_penalties = np.minimum(
+            np.array(gan_naturalness_scores), allowed_naturalness_threshold
+        ) * (1 / allowed_naturalness_threshold)
+        score_lists = [entailment_scores, negativity_scores]
+        min_scores_per_list = [min(scores) for scores in score_lists]
+        worse_score_list = score_lists[np.argmin(min_scores_per_list)]
+        return np.multiply(worse_score_list, naturalness_penalties).tolist()
+        # The logic here is that if the naturalness scores are high enough, we shouldn't pay too
+        # much attention to them, and allow the model some margin. But if they are low, we should
+        # try to improve them before anything else, because in that case the model is probably
+        # generating gibberish and the other metrics are unreliable anyway.
+
+    @staticmethod
+    def get_sentence_length_difference_penalties(
+        prompt: str, generations: list[str]
+    ) -> list[float]:
+        prompt_length = len(prompt.split())
+        generation_lengths = [len(g.split()) for g in generations]
+        return [
+            min(g_length, prompt_length) / max(g_length, prompt_length)
+            for g_length in generation_lengths
+        ]
 
     def get_entailment(self, prompt: str, generations: list[str]) -> list[float]:
-        entailment_scores = self.entailment_classifier.evaluate_text_pairs(
+        model_evaluated_entailment_scores = self.entailment_classifier.evaluate_text_pairs(
             [(prompt, generation) for generation in generations], return_probs=True
         )[:, self.entailment_classifier.entailment_code].tolist()
-        return round_list(entailment_scores)
+        length_difference_penalties = self.get_sentence_length_difference_penalties(
+            prompt, generations
+        )
+        final_scores = np.multiply(
+            model_evaluated_entailment_scores, length_difference_penalties
+        ).tolist()
+        return round_list(final_scores)
 
     def get_negativity(self, generations: list[str]) -> list[float]:
         negativity_scores = [
