@@ -43,7 +43,7 @@ class PPOTrainer(Trainer):
         max_len: int,
         device: torch.device,
         save_dir: Path,
-        call_parameters_save_path: Path,
+        general_training_log_path: Path,
         params_to_save: dict,
     ):
         super().__init__(
@@ -53,7 +53,7 @@ class PPOTrainer(Trainer):
                 VALUE_LOSS_METRIC,
             ],
             save_dir=save_dir,
-            call_parameters_save_path=call_parameters_save_path,
+            general_training_log_path=general_training_log_path,
             params_to_save=params_to_save,
             max_len=max_len,
         )

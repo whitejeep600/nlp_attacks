@@ -31,7 +31,11 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import get_available_torch_devices, get_next_run_subdir_name, round_list
+from src.utils import (
+    get_next_run_subdir_name,
+    round_list,
+    assign_gpu_devices,
+)
 
 
 class NegativizerMetricCalculator(RewardCalculator):
@@ -192,33 +196,57 @@ class NegativizerMetricCalculator(RewardCalculator):
         ]
 
 
-def train(
-    trained_model: GenerativeBart,
-    entailment_classifier: EntailmentEvaluator,
-    sentiment_classifier: SentimentClassifier,
-    gan_discriminator: GANDiscriminator,
-    train_dataloader: DataLoader,
-    eval_dataloader: DataLoader,
+def main(
+    source_model_name: str,
+    train_split_path: Path,
+    eval_split_path: Path,
+    max_len: int,
+    batch_size: int,
     n_epochs: int,
     attacker_lr: float,
+    gan_lr: float,
     beta: float,
     temperature,
-    reference_model: GenerativeBart,
-    max_len: int,
     save_dir: Path,
-    call_parameters_save_path: Path,
+    general_training_log_path: Path,
     params_to_save: dict,
-    n_max_train_batches: int | None = None,
+    n_max_train_samples: int | None = None,
+    source_model_weights_path: Path | None = None,
 ):
-    run_subdir_name = get_next_run_subdir_name(save_dir)
-    save_dir = save_dir / run_subdir_name
-    params_to_save.update({"save_dir": str(save_dir)})
-    save_dir.mkdir(parents=True, exist_ok=True)
-    call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
+    generator_device, reference_model_device, evaluator_models_device = assign_gpu_devices()
+
+    trained_model = GenerativeBart(
+        source_model_name, max_len, generator_device, source_model_weights_path
+    )
+    reference_model = GenerativeBart(
+        source_model_name, max_len, reference_model_device, source_model_weights_path
+    )
+
+    entailment_classifier = EntailmentEvaluator(evaluator_models_device)
+    sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
+    gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
+
+    train_dataset = SST2Dataset(
+        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
+    )
+    eval_dataset = SST2Dataset(
+        eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
+    )
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
+
+    if n_max_train_samples is not None:
+        n_max_train_batches = n_max_train_samples // batch_size
+    else:
+        n_max_train_batches = None
+
+    run_subdir_name = save_dir / get_next_run_subdir_name(save_dir)
+    params_to_save.update({"run_subdir_name": str(run_subdir_name)})
+    run_subdir_name.mkdir(parents=True, exist_ok=True)
+    general_training_log_path.parent.mkdir(parents=True, exist_ok=True)
 
     negativizer_optimizer = AdamW(trained_model.parameters(), lr=0)
-
-    entailment_classifier.eval()
 
     # Weighted loss to balance the fact that in training batches there are two generations
     # for one sampled sentence. This will stop working if GAN_GENERATED_LABEL is not 1.
@@ -241,10 +269,11 @@ def train(
         attacker_lr=attacker_lr,
         max_len=max_len,
         reference_model=reference_model,
-        save_dir=save_dir,
-        call_parameters_save_path=call_parameters_save_path,
+        save_dir=run_subdir_name,
+        general_training_log_path=general_training_log_path,
         params_to_save=params_to_save,
     )
+
     best_mean_final_rewards: float | None = None
     best_epoch = -1
 
@@ -260,84 +289,6 @@ def train(
 
     dpo_trainer.save_stuff(best_epoch)
     torch.save(gan_discriminator.module.state_dict(), save_dir / "gan_ckpt.pt")
-
-
-def main(
-    source_model_name: str,
-    train_split_path: Path,
-    eval_split_path: Path,
-    max_len: int,
-    batch_size: int,
-    n_epochs: int,
-    attacker_lr: float,
-    gan_lr: float,
-    beta: float,
-    temperature,
-    save_dir: Path,
-    call_parameters_save_path: Path,
-    params_to_save: dict,
-    n_max_train_samples: int | None = None,
-    source_model_weights_path: Path | None = None,
-):
-    devices = get_available_torch_devices()
-    if len(devices) > 1:
-        evaluator_models_device = devices[1]
-        reference_model_device = devices[1]
-        generator_device = devices[0]
-    else:
-        generator_device = devices[0]
-        evaluator_models_device = devices[0]
-        reference_model_device = devices[0]
-
-    entailment_classifier = EntailmentEvaluator(evaluator_models_device)
-
-    sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
-    gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
-
-    trained_model = GenerativeBart(
-        source_model_name, max_len, generator_device, source_model_weights_path
-    )
-    reference_model = GenerativeBart(
-        source_model_name, max_len, reference_model_device, source_model_weights_path
-    )
-
-    # Training on already negative examples is not very informative for this task.
-    # We also want to filter out short samples, which in the sst2 dataset are often incomplete
-    # sentences (for some reason). Training on such short sentences is not appropriate for this
-    # experiment, and simply hard.
-    train_dataset = SST2Dataset(
-        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
-    )
-    eval_dataset = SST2Dataset(
-        eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
-    )
-
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=True)
-
-    if n_max_train_samples is not None:
-        n_max_train_batches = n_max_train_samples // batch_size
-    else:
-        n_max_train_batches = None
-
-    train(
-        trained_model,
-        entailment_classifier,
-        sentiment_classifier,
-        gan_discriminator,
-        train_dataloader,
-        eval_dataloader,
-        n_epochs,
-        attacker_lr,
-        beta,
-        temperature,
-        reference_model,
-        max_len,
-        save_dir,
-        call_parameters_save_path,
-        params_to_save,
-        n_max_train_batches,
-    )
 
 
 if __name__ == "__main__":
@@ -365,7 +316,7 @@ if __name__ == "__main__":
     n_max_train_samples: int | None = train_params["n_max_train_samples"]
 
     save_dir = Path(train_params["save_dir"])
-    call_parameters_save_path = Path(train_params["call_parameters_save_path"])
+    general_training_log_path = Path(train_params["general_training_log_path"])
 
     main(
         source_model_name,
@@ -379,7 +330,7 @@ if __name__ == "__main__":
         beta,
         temperature,
         save_dir,
-        call_parameters_save_path,
+        general_training_log_path,
         train_params,
         n_max_train_samples,
         source_model_weights_path,

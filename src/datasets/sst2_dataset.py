@@ -10,6 +10,10 @@ from transformers import PreTrainedTokenizer
 from src.constants import ID, LABEL, SENTENCE
 
 
+# We might  want to filter out short samples, which in the sst2 dataset are often incomplete
+# sentences (for some reason). Training on such short sentences is not appropriate for some
+# experiments, and simply hard. Also, for the negativizer task, training on already negative
+# examples is not very informative, so we want a possibility to filter them out.
 class SST2Dataset(Dataset):
     def __init__(
         self,

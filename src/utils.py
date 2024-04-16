@@ -90,3 +90,16 @@ def harmonic_mean(numbers: list[float], weights: list[float] | None = None) -> f
     else:
         weights_array = np.array(weights)
     return weights_array.sum() / (weights_array / numbers_array).sum()
+
+
+def assign_gpu_devices() -> tuple[torch.device, torch.device, torch.device]:
+    devices = get_available_torch_devices()
+    if len(devices) > 1:
+        evaluator_models_device = devices[1]
+        reference_model_device = devices[1]
+        generator_device = devices[0]
+    else:
+        generator_device = devices[0]
+        evaluator_models_device = devices[0]
+        reference_model_device = devices[0]
+    return generator_device, reference_model_device, evaluator_models_device

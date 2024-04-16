@@ -64,11 +64,10 @@ def train(
     attacker_lr: float,
     beta: float,
     temperature: float,
-    trained_model_device: torch.device,
     reference_model: GenerativeBart,
     max_len: int,
     save_dir: Path,
-    call_parameters_save_path: Path,
+    general_training_log_path: Path,
     params_to_save: dict,
     n_max_train_batches: int | None = None,
 ):
@@ -77,7 +76,7 @@ def train(
     params_to_save.update({"save_dir": str(save_dir)})
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    call_parameters_save_path.parent.mkdir(parents=True, exist_ok=True)
+    general_training_log_path.parent.mkdir(parents=True, exist_ok=True)
 
     echo_optimizer = AdamW(echo.parameters(), lr=attacker_lr)
 
@@ -96,7 +95,7 @@ def train(
         max_len=max_len,
         reference_model=reference_model,
         save_dir=save_dir,
-        call_parameters_save_path=call_parameters_save_path,
+        general_training_log_path=general_training_log_path,
         params_to_save=params_to_save,
     )
     best_mean_final_rewards: float | None = None
@@ -127,7 +126,7 @@ def main(
     beta: float,
     temperature,
     save_dir: Path,
-    call_parameters_save_path: Path,
+    general_training_log_path: Path,
     params_to_save: dict,
     n_max_train_samples: int | None = None,
 ):
@@ -177,11 +176,10 @@ def main(
         attacker_lr,
         beta,
         temperature,
-        trained_model_device,
         reference_model,
         max_len,
         save_dir,
-        call_parameters_save_path,
+        general_training_log_path,
         params_to_save,
         n_max_train_batches,
     )
@@ -205,7 +203,7 @@ if __name__ == "__main__":
     n_max_train_samples: int | None = echo_params["n_max_train_samples"]
 
     save_dir = Path(echo_params["save_dir"])
-    call_parameters_save_path = Path(echo_params["call_parameters_save_path"])
+    general_training_log_path = Path(echo_params["general_training_log_path"])
 
     main(
         source_model_name,
@@ -219,7 +217,7 @@ if __name__ == "__main__":
         beta,
         temperature,
         save_dir,
-        call_parameters_save_path,
+        general_training_log_path,
         echo_params,
         n_max_train_samples,
     )

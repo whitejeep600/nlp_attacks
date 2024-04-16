@@ -26,7 +26,7 @@ src.echo.train_dpo:
   temperature: 1
   save_dir: runs/echo/
   n_max_train_samples: 1024
-  call_parameters_save_path: runs/echo/log.txt
+  general_training_log_path: runs/echo/log.txt
 
 src.experimental_generators.negativizer.train_dpo:
   source_model_name: eugenesiow/bart-paraphrase
@@ -42,4 +42,4 @@ src.experimental_generators.negativizer.train_dpo:
   temperature: 1
   save_dir: runs/negativizer/
   n_max_train_samples: 1024
-  call_parameters_save_path: runs/negativizer/log.txt
+  general_training_log_path: runs/negativizer/log.txt

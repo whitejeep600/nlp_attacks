@@ -20,7 +20,7 @@ class Trainer:
         self,
         standard_metric_names: list[str],
         save_dir: Path,
-        call_parameters_save_path: Path,
+        general_training_log_path: Path,
         params_to_save: dict,
         max_len: int,
     ):
@@ -31,7 +31,7 @@ class Trainer:
         self.epochs_elapsed = 0
         self.save_dir = save_dir
         self.train_start_time = time.time()
-        self.call_parameters_save_path = call_parameters_save_path
+        self.general_training_log_path = general_training_log_path
         self.params_to_save = params_to_save
         self.params_to_save.update({"git_commit_id": get_current_git_commit_id()})
         self.max_len = max_len
@@ -188,7 +188,7 @@ class Trainer:
         # model runs, as a general log of the experiment process.
         to_save = copy.deepcopy(self.params_to_save)
         to_save["summary"] = self.get_epoch_stats(best_epoch_no)
-        with open(self.call_parameters_save_path, "a") as f:
+        with open(self.general_training_log_path, "a") as f:
             f.write(f"{json.dumps(self.params_to_save, indent=2)}\n\n")
 
     def save_stuff(self, best_epoch_no: int) -> None:

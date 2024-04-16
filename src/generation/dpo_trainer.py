@@ -92,14 +92,14 @@ class DPOTrainer(Trainer):
         max_len: int,
         reference_model: GenerativeBart,
         save_dir: Path,
-        call_parameters_save_path: Path,
+        general_training_log_path: Path,
         params_to_save: dict,
         gradient_accumulation_batches: int = 4,
     ):
         super().__init__(
             standard_metric_names=[POLICY_LOSS],
             save_dir=save_dir,
-            call_parameters_save_path=call_parameters_save_path,
+            general_training_log_path=general_training_log_path,
             params_to_save=params_to_save,
             max_len=max_len,
         )
