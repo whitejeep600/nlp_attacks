@@ -51,6 +51,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         self.sentiment_classifier = sentiment_classifier
         self.gan_discriminator = gan_discriminator
         self.gan_loss = gan_loss
+        self.precomputed_prompt_negativities: dict[str, float] = {}
 
     @classmethod
     def calculate_rewards(
@@ -71,6 +72,13 @@ class NegativizerMetricCalculator(RewardCalculator):
         # much attention to them, and allow the model some margin. But if they are low, we should
         # try to improve them before anything else, because in that case the model is probably
         # generating gibberish and the other metrics are unreliable anyway.
+
+    # This is for evaluation purposes only and does not influence the rewards.
+    def get_prompt_original_negativity(self, prompt: str) -> float:
+        if prompt not in self.precomputed_prompt_negativities:
+            negativity = self.sentiment_classifier.evaluate_texts([prompt], return_probs=True)[0][NEGATIVE].item()
+            self.precomputed_prompt_negativities[prompt] = round(negativity, 2)
+        return self.precomputed_prompt_negativities[prompt]
 
     @staticmethod
     def get_sentence_length_difference_penalties(
@@ -134,7 +142,7 @@ class NegativizerMetricCalculator(RewardCalculator):
     def get_rewards_and_metrics(
         self, prompt: str, generations: list[str]
     ) -> tuple[list[float], list[dict[str, float]]]:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4) as executor:
             entailment_calculation = executor.submit(
                 partial(self.get_entailment, prompt=prompt, generations=generations)
             )
@@ -144,10 +152,14 @@ class NegativizerMetricCalculator(RewardCalculator):
             gan_naturalness_calculation = executor.submit(
                 partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
             )
+            prompt_negativity_calculation = executor.submit(
+                partial(self.get_prompt_original_negativity, prompt=prompt)
+            )
 
         entailment_scores = entailment_calculation.result()
         negativity_scores = negativity_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
+        prompt_negativity = prompt_negativity_calculation.result()
 
         rewards = self.calculate_rewards(
             entailment_scores, negativity_scores, gan_naturalness_scores
@@ -167,6 +179,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 REWARD: reward,
                 GAN_ACCURACY: discriminator_accuracy,
                 "generations_equal": generations_equal,
+                "prompt_negativity": prompt_negativity,
             }
             for (
                 entailment_score,
