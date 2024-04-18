@@ -66,7 +66,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         score_lists = [entailment_scores, negativity_scores]
         min_scores_per_list = [min(scores) for scores in score_lists]
         worse_score_list = score_lists[np.argmin(min_scores_per_list)]
-        return np.multiply(worse_score_list, naturalness_penalties).tolist()
+        return round_list(np.multiply(worse_score_list, naturalness_penalties).tolist())
         # The logic here is that if the naturalness scores are high enough, we shouldn't pay too
         # much attention to them, and allow the model some margin. But if they are low, we should
         # try to improve them before anything else, because in that case the model is probably
