@@ -57,6 +57,12 @@ class RewardCalculator:
     def get_metric_names(self) -> list[str]:
         raise NotImplementedError
 
+    def train(self) -> None:
+        pass
+
+    def eval(self) -> None:
+        pass
+
 
 class WarmupScheduler:
     def __init__(self, initial_lr: float, final_lr: float, n_steps: int):
@@ -117,11 +123,13 @@ class DPOTrainer(Trainer):
 
     def train(self) -> None:
         self.trained_model.train()
-        self.reference_model.eval()
+        self.reference_model.eval()  # sic!
+        self.metric_calculator.train()
 
     def eval(self) -> None:
         self.trained_model.eval()
         self.reference_model.eval()
+        self.metric_calculator.eval()
 
     def batch_generate(
         self,

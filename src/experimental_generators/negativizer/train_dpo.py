@@ -31,11 +31,7 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import (
-    get_next_run_subdir_name,
-    round_list,
-    assign_gpu_devices,
-)
+from src.utils import assign_gpu_devices, get_next_run_subdir_name, round_list
 
 
 class NegativizerMetricCalculator(RewardCalculator):
@@ -52,6 +48,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         self.gan_discriminator = gan_discriminator
         self.gan_loss = gan_loss
         self.precomputed_prompt_negativities: dict[str, float] = {}
+        self.mode = TRAIN
 
     @classmethod
     def calculate_rewards(
@@ -76,7 +73,9 @@ class NegativizerMetricCalculator(RewardCalculator):
     # This is for evaluation purposes only and does not influence the rewards.
     def get_prompt_original_negativity(self, prompt: str) -> float:
         if prompt not in self.precomputed_prompt_negativities:
-            negativity = self.sentiment_classifier.evaluate_texts([prompt], return_probs=True)[0][NEGATIVE].item()
+            negativity = self.sentiment_classifier.evaluate_texts([prompt], return_probs=True)[0][
+                NEGATIVE
+            ].item()
             self.precomputed_prompt_negativities[prompt] = round(negativity, 2)
         return self.precomputed_prompt_negativities[prompt]
 
@@ -122,10 +121,6 @@ class NegativizerMetricCalculator(RewardCalculator):
         discriminator_accuracy = float(
             (torch.argmax(gan_logits, dim=1) == all_labels).float().mean()
         )
-        loss = self.gan_loss(gan_logits, all_labels)
-        self.gan_discriminator.optimizer.zero_grad()
-        loss.backward()
-        self.gan_discriminator.optimizer.step()
 
         # Multiplying by 2 because these scores will be close to 0.5 for a good generator and
         # discriminator - discriminator's accuracy will be close to random guessing. However,
@@ -136,6 +131,12 @@ class NegativizerMetricCalculator(RewardCalculator):
         gan_fooling_factors = (
             2 * torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL][:-1]
         ).tolist()
+
+        if self.mode == TRAIN:
+            loss = self.gan_loss(gan_logits, all_labels)
+            self.gan_discriminator.optimizer.zero_grad()
+            loss.backward()
+            self.gan_discriminator.optimizer.step()
 
         return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
@@ -207,6 +208,14 @@ class NegativizerMetricCalculator(RewardCalculator):
             "prompt_equals_generation",
             "generations_equal",
         ]
+
+    def train(self) -> None:
+        self.gan_discriminator.train()
+        self.mode = TRAIN
+
+    def eval(self) -> None:
+        self.gan_discriminator.eval()
+        self.mode = EVAL
 
 
 def main(

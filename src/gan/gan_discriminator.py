@@ -52,3 +52,9 @@ class GANDiscriminator:
 
     def forward(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         return self.module(batch["input_ids"], batch["attention_mask"])
+
+    def train(self) -> None:
+        self.module.train()
+
+    def eval(self) -> None:
+        self.module.eval()
