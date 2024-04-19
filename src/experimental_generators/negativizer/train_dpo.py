@@ -181,6 +181,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 GAN_ACCURACY: discriminator_accuracy,
                 "generations_equal": generations_equal,
                 "prompt_negativity": prompt_negativity,
+                "negativity_gain": negativity_score - prompt_negativity
             }
             for (
                 entailment_score,
@@ -207,6 +208,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             REWARD,
             "prompt_equals_generation",
             "generations_equal",
+            "negativity_gain"
         ]
 
     def train(self) -> None:
