@@ -109,7 +109,7 @@ def train(
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
             best_epoch = i
             best_mean_final_rewards = new_mean_final_rewards
-            dpo_trainer.save_trained_models()
+            dpo_trainer.save_trained_model()
 
     dpo_trainer.save_stuff(best_epoch)
 

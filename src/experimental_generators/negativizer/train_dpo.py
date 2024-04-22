@@ -181,7 +181,7 @@ class NegativizerMetricCalculator(RewardCalculator):
                 GAN_ACCURACY: discriminator_accuracy,
                 "generations_equal": generations_equal,
                 "prompt_negativity": prompt_negativity,
-                "negativity_gain": negativity_score - prompt_negativity
+                "negativity_gain": round(negativity_score - prompt_negativity, 2),
             }
             for (
                 entailment_score,
@@ -208,7 +208,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             REWARD,
             "prompt_equals_generation",
             "generations_equal",
-            "negativity_gain"
+            "negativity_gain",
         ]
 
     def train(self) -> None:
@@ -309,10 +309,11 @@ def main(
         if best_mean_final_rewards is None or new_mean_final_rewards > best_mean_final_rewards:
             best_epoch = i
             best_mean_final_rewards = new_mean_final_rewards
-            dpo_trainer.save_trained_models()
+            dpo_trainer.save_trained_model(filename="best_generator_ckpt.pt")
 
     dpo_trainer.save_stuff(best_epoch)
     torch.save(gan_discriminator.module.state_dict(), save_dir / "gan_ckpt.pt")
+    dpo_trainer.save_trained_model(filename="last_generator_ckpt.pt")
 
 
 if __name__ == "__main__":

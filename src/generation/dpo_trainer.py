@@ -299,8 +299,8 @@ class DPOTrainer(Trainer):
             self.trained_model_optimizer.step()
             self.trained_model_optimizer.zero_grad()
 
-    def save_trained_models(self) -> None:
-        torch.save(self.trained_model.bert.state_dict(), self.save_dir / "generator_ckpt.pt")
+    def save_trained_model(self, filename: str = "generator_ckpt.pt") -> None:
+        torch.save(self.trained_model.bert.state_dict(), self.save_dir / filename)
 
     def save_epoch_generations_and_metrics(
         self, all_batch_generations: list[list[SampleGenerations]]
