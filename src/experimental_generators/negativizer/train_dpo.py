@@ -236,6 +236,7 @@ def main(
     params_to_save: dict,
     n_max_train_samples: int | None = None,
     source_model_weights_path: Path | None = None,
+    gan_discriminator_weights_path: Path | None = None,
 ):
     generator_device, reference_model_device, evaluator_models_device = assign_gpu_devices()
 
@@ -248,7 +249,9 @@ def main(
 
     entailment_classifier = EntailmentEvaluator(evaluator_models_device)
     sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
-    gan_discriminator = GANDiscriminator(evaluator_models_device, max_len, gan_lr)
+    gan_discriminator = GANDiscriminator(
+        evaluator_models_device, max_len, gan_lr, gan_discriminator_weights_path
+    )
 
     train_dataset = SST2Dataset(
         train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
@@ -310,10 +313,11 @@ def main(
             best_epoch = i
             best_mean_final_rewards = new_mean_final_rewards
             dpo_trainer.save_trained_model(filename="best_generator_ckpt.pt")
+            torch.save(gan_discriminator.module.state_dict(), run_subdir_name / "best_gan_ckpt.pt")
 
-    dpo_trainer.save_stuff(best_epoch)
-    torch.save(gan_discriminator.module.state_dict(), save_dir / "gan_ckpt.pt")
     dpo_trainer.save_trained_model(filename="last_generator_ckpt.pt")
+    torch.save(gan_discriminator.module.state_dict(), run_subdir_name / "last_gan_ckpt.pt")
+    dpo_trainer.save_stuff(best_epoch)
 
 
 if __name__ == "__main__":
@@ -325,6 +329,11 @@ if __name__ == "__main__":
     source_model_weights_path = (
         Path(train_params["source_model_weights_path"])
         if train_params["source_model_weights_path"] is not None
+        else None
+    )
+    gan_discriminator_weights_path = (
+        Path(train_params["gan_discriminator_weights_path"])
+        if train_params["gan_discriminator_weights_path"] is not None
         else None
     )
 
@@ -359,4 +368,5 @@ if __name__ == "__main__":
         train_params,
         n_max_train_samples,
         source_model_weights_path,
+        gan_discriminator_weights_path,
     )

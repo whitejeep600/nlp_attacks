@@ -31,6 +31,7 @@ src.echo.train_dpo:
 src.experimental_generators.negativizer.train_dpo:
   source_model_name: eugenesiow/bart-paraphrase
   source_model_weights_path: null
+  gan_discriminator_weights_path: null
   train_split_path: data/sst2/train.csv
   eval_split_path: data/sst2/validation.csv
   max_len: 16

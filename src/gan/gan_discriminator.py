@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import torch
 from torch import nn
 from torch.nn import Linear
@@ -6,11 +10,13 @@ from transformers import AutoTokenizer, BertModel
 
 
 class GanDiscriminatorModule(nn.Module):
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, device: torch.device, weights_path: Path | None = None):
         super().__init__()
         self.model = BertModel.from_pretrained(model_name)
         self.model.config.hidden_dropout_prob = 0.01
         self.linear_to_logits = Linear(self.model.config.hidden_size, 2)
+        if weights_path is not None:
+            self.load_state_dict(torch.load(weights_path, map_location=device))
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         bert_output = self.model(
@@ -23,10 +29,12 @@ class GanDiscriminatorModule(nn.Module):
 
 
 class GANDiscriminator:
-    def __init__(self, device: torch.device, max_length: int, lr: float):
+    def __init__(
+        self, device: torch.device, max_length: int, lr: float, weights_path: Path | None = None
+    ):
         super().__init__()
         model_name = "bert-base-uncased"
-        self.module = GanDiscriminatorModule(model_name)
+        self.module = GanDiscriminatorModule(model_name, device, weights_path)
         self.module.to(device)
         self.module.train()
         self.device = device
