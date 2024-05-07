@@ -31,7 +31,27 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import assign_gpu_devices, get_next_run_subdir_name, round_list
+from src.utils import assign_gpu_devices, get_next_run_subdir_name, harmonic_mean, round_list
+
+GAN_THRESHOLD = 0.8
+
+
+def get_base(n: float) -> float:
+    if n < GAN_THRESHOLD:
+        return 0.4 * (n / GAN_THRESHOLD)
+    elif n < 1:
+        return 0.4 + 0.1 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
+    else:
+        return 0.5
+
+
+def get_limit(n: float) -> float:
+    if n < GAN_THRESHOLD:
+        return 0.1 * (n / GAN_THRESHOLD)
+    elif n < 1:
+        return 0.1 + 0.4 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
+    else:
+        return 0.5
 
 
 class NegativizerMetricCalculator(RewardCalculator):
@@ -57,19 +77,17 @@ class NegativizerMetricCalculator(RewardCalculator):
         negativity_scores: list[float],
         gan_naturalness_scores: list[float],
     ) -> list[float]:
-        allowed_naturalness_threshold = 0.8
-        naturalness_penalties = (
-            np.minimum(np.array(gan_naturalness_scores), allowed_naturalness_threshold)
-            * (1 / allowed_naturalness_threshold)
-        ).tolist()
-        score_lists = [entailment_scores, negativity_scores, naturalness_penalties]
-        min_scores_per_list = [min(scores) for scores in score_lists]
-        worse_score_list = score_lists[np.argmin(min_scores_per_list)]
-        return round_list(np.multiply(worse_score_list, naturalness_penalties).tolist())
-        # The logic here is that if the naturalness scores are high enough, we shouldn't pay too
-        # much attention to them, and allow the model some margin. But if they are low, we should
-        # try to improve them before anything else, because in that case the model is probably
-        # generating gibberish and the other metrics are unreliable anyway.
+        rewards: list[float] = []
+        for i in range(len(gan_naturalness_scores)):
+            gan_naturalness_score = gan_naturalness_scores[i]
+            entailment_score = entailment_scores[i]
+            negativity_score = negativity_scores[i]
+            base = get_base(gan_naturalness_score)
+            limit = get_limit(gan_naturalness_score)
+            from_other_goals = harmonic_mean([entailment_score, negativity_score])
+            reward = base + limit * from_other_goals
+            rewards.append(reward)
+        return rewards
 
     # This is for evaluation purposes only and does not influence the rewards.
     def get_prompt_original_negativity(self, prompt: str) -> float:
