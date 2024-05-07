@@ -80,8 +80,8 @@ class NegativizerMetricCalculator(RewardCalculator):
         rewards: list[float] = []
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
-            entailment_score = entailment_scores[i]
-            negativity_score = negativity_scores[i]
+            entailment_score = entailment_scores[i] + 0.01
+            negativity_score = negativity_scores[i] + 0.01
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
             from_other_goals = harmonic_mean([entailment_score, negativity_score])
