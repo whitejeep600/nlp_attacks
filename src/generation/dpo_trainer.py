@@ -324,7 +324,7 @@ class DPOTrainer(Trainer):
         generated_sentences_path = self.save_dir / "generated_sentences"
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
         current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
-        df_to_save.to_csv(current_save_path)
+        df_to_save.to_csv(current_save_path, index=False)
 
     def iteration(
         self, dataloader: DataLoader, mode: str, n_max_batches: int | None = None

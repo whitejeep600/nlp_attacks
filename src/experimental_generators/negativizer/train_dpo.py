@@ -58,10 +58,11 @@ class NegativizerMetricCalculator(RewardCalculator):
         gan_naturalness_scores: list[float],
     ) -> list[float]:
         allowed_naturalness_threshold = 0.8
-        naturalness_penalties = np.minimum(
-            np.array(gan_naturalness_scores), allowed_naturalness_threshold
-        ) * (1 / allowed_naturalness_threshold)
-        score_lists = [entailment_scores, negativity_scores]
+        naturalness_penalties = (
+            np.minimum(np.array(gan_naturalness_scores), allowed_naturalness_threshold)
+            * (1 / allowed_naturalness_threshold)
+        ).tolist()
+        score_lists = [entailment_scores, negativity_scores, naturalness_penalties]
         min_scores_per_list = [min(scores) for scores in score_lists]
         worse_score_list = score_lists[np.argmin(min_scores_per_list)]
         return round_list(np.multiply(worse_score_list, naturalness_penalties).tolist())
