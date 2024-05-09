@@ -33,14 +33,14 @@ from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
 from src.utils import assign_gpu_devices, get_next_run_subdir_name, harmonic_mean, round_list
 
-GAN_THRESHOLD = 0.8
+GAN_THRESHOLD = 0.7
 
 
 def get_base(n: float) -> float:
     if n < GAN_THRESHOLD:
-        return 0.4 * (n / GAN_THRESHOLD)
+        return 0.48 * (n / GAN_THRESHOLD)
     elif n < 1:
-        return 0.4 + 0.1 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
+        return 0.48 + 0.02 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
     else:
         return 0.5
 
