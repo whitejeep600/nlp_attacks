@@ -41,6 +41,7 @@ src.experimental_generators.negativizer.train_dpo:
   gan_lr: 1e-4
   beta: 0.1
   temperature: 1
+  gan_weight_decay: 5e-07
   save_dir: runs/negativizer/
   n_max_train_samples: 1024
   general_training_log_path: runs/negativizer/log.txt

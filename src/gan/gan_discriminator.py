@@ -66,3 +66,6 @@ class GANDiscriminator:
 
     def eval(self) -> None:
         self.module.eval()
+
+    def weight_norm_sum(self) -> torch.Tensor:
+        return torch.stack([(p.data * p.data).sum() for p in self.module.parameters()]).sum()

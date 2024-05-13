@@ -61,6 +61,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         sentiment_classifier: SentimentClassifier,
         gan_discriminator: GANDiscriminator,
         gan_loss: _Loss,
+        gan_weight_decay: float,
     ):
         super().__init__()
         self.entailment_classifier = entailment_classifier
@@ -69,6 +70,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         self.gan_loss = gan_loss
         self.precomputed_prompt_negativities: dict[str, float] = {}
         self.mode = TRAIN
+        self.gan_weight_decay = gan_weight_decay
 
     @classmethod
     def calculate_rewards(
@@ -152,7 +154,10 @@ class NegativizerMetricCalculator(RewardCalculator):
         ).tolist()
 
         if self.mode == TRAIN:
-            loss = self.gan_loss(gan_logits, all_labels)
+            gan_weight_norm_sum = self.gan_discriminator.weight_norm_sum()
+            loss = (
+                self.gan_loss(gan_logits, all_labels) + self.gan_weight_decay * gan_weight_norm_sum
+            )
             self.gan_discriminator.optimizer.zero_grad()
             loss.backward()
             self.gan_discriminator.optimizer.step()
@@ -250,6 +255,7 @@ def main(
     gan_lr: float,
     beta: float,
     temperature,
+    gan_weight_decay,
     save_dir: Path,
     general_training_log_path: Path,
     params_to_save: dict,
@@ -304,6 +310,7 @@ def main(
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
         gan_loss=gan_loss,
+        gan_weight_decay=gan_weight_decay,
     )
 
     dpo_trainer = DPOTrainer(
@@ -366,6 +373,7 @@ if __name__ == "__main__":
     gan_lr = float(train_params["gan_lr"])
     beta = float(train_params["beta"])
     temperature = float(train_params["temperature"])
+    gan_weight_decay = float(train_params["gan_weight_decay"])
     n_max_train_samples: int | None = train_params["n_max_train_samples"]
 
     save_dir = Path(train_params["save_dir"])
@@ -382,6 +390,7 @@ if __name__ == "__main__":
         gan_lr,
         beta,
         temperature,
+        gan_weight_decay,
         save_dir,
         general_training_log_path,
         train_params,
