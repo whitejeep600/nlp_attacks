@@ -33,7 +33,7 @@ from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
 from src.utils import assign_gpu_devices, get_next_run_subdir_name, harmonic_mean, round_list
 
-GAN_THRESHOLD = 0.7
+GAN_THRESHOLD = 0.6
 
 
 def get_base(n: float) -> float:
@@ -81,10 +81,10 @@ class NegativizerMetricCalculator(RewardCalculator):
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            negativity_score = min((negativity_scores[i] + 0.01) / 0.3, 1)
+            negativity_score = negativity_scores[i] + 0.01
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
-            from_other_goals = harmonic_mean([entailment_score, negativity_score])
+            from_other_goals = harmonic_mean([entailment_score, negativity_score], weights=[1, 5])
             reward = base + limit * from_other_goals
             rewards.append(reward)
         return rewards
