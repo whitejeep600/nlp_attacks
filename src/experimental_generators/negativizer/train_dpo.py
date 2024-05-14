@@ -76,17 +76,17 @@ class NegativizerMetricCalculator(RewardCalculator):
     def calculate_rewards(
         cls,
         entailment_scores: list[float],
-        negativity_scores: list[float],
+        negativity_gains: list[float],
         gan_naturalness_scores: list[float],
     ) -> list[float]:
         rewards: list[float] = []
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            negativity_score = negativity_scores[i] + 0.01
+            negativity_gain = negativity_gains[i] + 0.01
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
-            from_other_goals = harmonic_mean([entailment_score, negativity_score], weights=[1, 5])
+            from_other_goals = harmonic_mean([entailment_score, negativity_gain])
             reward = base + limit * from_other_goals
             rewards.append(reward)
         return rewards
@@ -181,13 +181,14 @@ class NegativizerMetricCalculator(RewardCalculator):
                 partial(self.get_prompt_original_negativity, prompt=prompt)
             )
 
-        entailment_scores = entailment_calculation.result()
-        negativity_scores = negativity_calculation.result()
-        gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
         prompt_negativity = prompt_negativity_calculation.result()
+        negativity_scores = negativity_calculation.result()
+        negativity_gains = [negativity_score - prompt_negativity for negativity_score in negativity_scores]
+        entailment_scores = entailment_calculation.result()
+        gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
         rewards = self.calculate_rewards(
-            entailment_scores, negativity_scores, gan_naturalness_scores
+            entailment_scores, negativity_gains, gan_naturalness_scores
         )
 
         prompts_equal_generation = [
