@@ -83,7 +83,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            negativity_gain = negativity_gains[i] + 0.01
+            negativity_gain = max(negativity_gains[i], 0) + 0.01
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
             from_other_goals = harmonic_mean([entailment_score, negativity_gain])
@@ -233,7 +233,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             REWARD,
             "prompt_equals_generation",
             "negativity_gain",
-            "prompt_negativity"
+            "prompt_negativity",
         ]
 
     def train(self) -> None:
