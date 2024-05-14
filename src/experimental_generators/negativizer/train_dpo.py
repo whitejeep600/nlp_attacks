@@ -232,8 +232,8 @@ class NegativizerMetricCalculator(RewardCalculator):
             GAN_ACCURACY,
             REWARD,
             "prompt_equals_generation",
-            "generations_equal",
             "negativity_gain",
+            "prompt_negativity"
         ]
 
     def train(self) -> None:
