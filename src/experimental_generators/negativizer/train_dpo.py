@@ -87,7 +87,7 @@ class NegativizerMetricCalculator(RewardCalculator):
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
             from_other_goals = harmonic_mean([entailment_score, negativity_gain])
-            reward = base + limit * from_other_goals
+            reward = round(base + limit * from_other_goals, 3)
             rewards.append(reward)
         return rewards
 
@@ -183,7 +183,9 @@ class NegativizerMetricCalculator(RewardCalculator):
 
         prompt_negativity = prompt_negativity_calculation.result()
         negativity_scores = negativity_calculation.result()
-        negativity_gains = [negativity_score - prompt_negativity for negativity_score in negativity_scores]
+        negativity_gains = [
+            negativity_score - prompt_negativity for negativity_score in negativity_scores
+        ]
         entailment_scores = entailment_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
@@ -194,7 +196,6 @@ class NegativizerMetricCalculator(RewardCalculator):
         prompts_equal_generation = [
             int(generation.lower() == prompt.lower()) for generation in generations
         ]
-        generations_equal = int(generations[0] == generations[1])
 
         stats = [
             {
@@ -204,7 +205,6 @@ class NegativizerMetricCalculator(RewardCalculator):
                 "prompt_equals_generation": prompt_equals_generation,
                 REWARD: reward,
                 GAN_ACCURACY: discriminator_accuracy,
-                "generations_equal": generations_equal,
                 "prompt_negativity": prompt_negativity,
                 "negativity_gain": round(negativity_score - prompt_negativity, 2),
             }

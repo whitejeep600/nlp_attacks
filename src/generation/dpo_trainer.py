@@ -12,7 +12,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.constants import EVAL, MODES, POLICY_LOSS, TRAIN
+from src.constants import EVAL, GENERATIONS_EQUAL, MODES, POLICY_LOSS, TRAIN
 from src.generation.base_trainer import Trainer
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_length_without_padding, sequence_logprob
@@ -103,7 +103,7 @@ class DPOTrainer(Trainer):
         gradient_accumulation_batches: int = 4,
     ):
         super().__init__(
-            standard_metric_names=[POLICY_LOSS],
+            standard_metric_names=[POLICY_LOSS, GENERATIONS_EQUAL],
             save_dir=save_dir,
             general_training_log_path=general_training_log_path,
             params_to_save=params_to_save,
@@ -292,6 +292,14 @@ class DPOTrainer(Trainer):
         for g in self.trained_model_optimizer.param_groups:
             g["lr"] = new_lr
 
+    def adjust_temperature(self, generations_equal_ratio: float) -> None:
+        if generations_equal_ratio < 0.1:
+            new_temperature = 1 + (self.temperature - 1) * 0.9
+        else:
+            new_temperature = self.temperature + 0.1
+        self.temperature = new_temperature
+        print(f"Adjusting temperature to {new_temperature}")
+
     def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
         self.update_learning_rate()
         policy_loss.backward()
@@ -382,10 +390,23 @@ class DPOTrainer(Trainer):
                 ]
             )
         )
+        generations_equal_ratio = [
+            float(
+                mean(
+                    [
+                        int(
+                            sample_generations.generation_texts[0]
+                            == sample_generations.generation_texts[1]
+                        )
+                        for sample_generations in batch_generations
+                    ]
+                )
+            )
+            for batch_generations in all_epoch_batch_generations
+        ]
+        self.adjust_temperature(float(mean(generations_equal_ratio)))
         self.add_epoch_metrics(
-            {
-                POLICY_LOSS: epoch_policy_losses,
-            },
+            {POLICY_LOSS: epoch_policy_losses, GENERATIONS_EQUAL: generations_equal_ratio},
             mode,
         )
         self.add_nonstandard_epoch_metrics(

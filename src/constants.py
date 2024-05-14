@@ -8,6 +8,7 @@ GRAMMATICALITY = "grammaticality_score"
 GAN_ACCURACY = "gan_discriminator_accuracy"
 REWARD = "reward"
 POLICY_LOSS = "policy_loss"
+GENERATIONS_EQUAL = "generations_equal"
 
 # Labels
 GAN_GENERATED_LABEL = 1
