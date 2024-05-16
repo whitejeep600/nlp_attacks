@@ -83,7 +83,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            negativity_gain = max(negativity_gains[i], 0) + 0.01
+            negativity_gain = 0.5 + negativity_gains[i] / 2  # in [0, 1]
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
             from_other_goals = harmonic_mean([entailment_score, negativity_gain])
@@ -107,7 +107,7 @@ class NegativizerMetricCalculator(RewardCalculator):
         prompt_length = len(prompt.split())
         generation_lengths = [len(g.split()) for g in generations]
         return [
-            min(g_length, prompt_length) / max(g_length, prompt_length)
+            (min(g_length, prompt_length) / max(g_length, prompt_length)) ** 2
             for g_length in generation_lengths
         ]
 
@@ -345,6 +345,7 @@ def main(
     dpo_trainer.save_trained_model(filename="last_generator_ckpt.pt")
     torch.save(gan_discriminator.module.state_dict(), run_subdir_name / "last_gan_ckpt.pt")
     dpo_trainer.save_stuff(best_epoch)
+    dpo_trainer.plot_temperatures()
 
 
 if __name__ == "__main__":

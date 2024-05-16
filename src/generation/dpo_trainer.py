@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
+from matplotlib import pyplot as plt
 from numpy import isclose, mean
 from torch.nn.functional import logsigmoid
 from torch.optim import Optimizer
@@ -120,6 +121,7 @@ class DPOTrainer(Trainer):
         self.temperature = temperature
         self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
         self.gradient_accumulation_batches = gradient_accumulation_batches
+        self.temperatures: list[float] = []
 
     def train(self) -> None:
         self.trained_model.train()
@@ -296,9 +298,8 @@ class DPOTrainer(Trainer):
         if generations_equal_ratio < 0.1:
             new_temperature = 1 + (self.temperature - 1) * 0.9
         else:
-            new_temperature = self.temperature + 0.1
+            new_temperature = min(self.temperature + 0.1, 2.5)
         self.temperature = new_temperature
-        print(f"Adjusting temperature to {new_temperature}")
 
     def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
         self.update_learning_rate()
@@ -333,6 +334,18 @@ class DPOTrainer(Trainer):
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
         current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
         df_to_save.to_csv(current_save_path, index=False)
+
+    def plot_temperatures(self) -> None:
+        plots_path = self.save_dir / "plots"
+
+        plots_path.mkdir(parents=True, exist_ok=True)
+        xs = self.temperatures
+        title = "epoch_temperature"
+        plt.title(title)
+        plt.plot(xs, linewidth=0.5)
+        plt.xlabel("iteration")
+        plt.savefig(plots_path / f"{title}.jpg", dpi=256)
+        plt.clf()
 
     def iteration(
         self, dataloader: DataLoader, mode: str, n_max_batches: int | None = None
@@ -404,7 +417,6 @@ class DPOTrainer(Trainer):
             )
             for batch_generations in all_epoch_batch_generations
         ]
-        self.adjust_temperature(float(mean(generations_equal_ratio)))
         self.add_epoch_metrics(
             {POLICY_LOSS: epoch_policy_losses, GENERATIONS_EQUAL: generations_equal_ratio},
             mode,
@@ -415,5 +427,7 @@ class DPOTrainer(Trainer):
         )
         if mode == EVAL:
             self.save_epoch_generations_and_metrics(all_epoch_batch_generations)
+            self.temperatures.append(self.temperature)
+            self.adjust_temperature(float(mean(generations_equal_ratio)))
 
         return mean_generation_score
