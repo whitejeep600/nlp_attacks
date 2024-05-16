@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import yaml
 from torch import nn
-from torch.nn.modules.loss import _Loss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -22,9 +21,9 @@ from src.constants import (
     GAN_GENERATED_LABEL,
     NATURALNESS,
     NEGATIVE,
-    NEGATIVITY,
     POSITIVE,
     REWARD,
+    TARGET_LABEL_PROB,
     TRAIN,
 )
 from src.datasets.sst2_dataset import SST2Dataset
@@ -54,51 +53,59 @@ def get_limit(n: float) -> float:
         return 0.5
 
 
-class NegativizerMetricCalculator(RewardCalculator):
+class UnidirectionalMetricCalculator(RewardCalculator):
     def __init__(
         self,
         entailment_classifier: EntailmentEvaluator,
         sentiment_classifier: SentimentClassifier,
         gan_discriminator: GANDiscriminator,
-        gan_loss: _Loss,
         gan_weight_decay: float,
+        target_label: int,
     ):
         super().__init__()
         self.entailment_classifier = entailment_classifier
         self.sentiment_classifier = sentiment_classifier
         self.gan_discriminator = gan_discriminator
-        self.gan_loss = gan_loss
-        self.precomputed_prompt_negativities: dict[str, float] = {}
+        self.precomputed_prompt_target_label_probs: dict[str, float] = {}
         self.mode = TRAIN
         self.gan_weight_decay = gan_weight_decay
+        self.target_label = target_label
+
+        # Weighted loss to balance the fact that in training batches there are two generations
+        # for one sampled sentence. This will stop working if GAN_GENERATED_LABEL is not 1.
+        self.gan_loss = nn.CrossEntropyLoss(
+            reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
+        )
 
     @classmethod
     def calculate_rewards(
         cls,
         entailment_scores: list[float],
-        negativity_gains: list[float],
+        target_label_prob_gains: list[float],
         gan_naturalness_scores: list[float],
     ) -> list[float]:
         rewards: list[float] = []
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            negativity_gain = 0.5 + negativity_gains[i] / 2  # in [0, 1]
+            target_label_prob_gain = 0.5 + target_label_prob_gains[i] / 2  # in [0, 1]
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
-            from_other_goals = harmonic_mean([entailment_score, negativity_gain])
+            from_other_goals = harmonic_mean([entailment_score, target_label_prob_gain])
             reward = round(base + limit * from_other_goals, 3)
             rewards.append(reward)
         return rewards
 
     # This is for evaluation purposes only and does not influence the rewards.
-    def get_prompt_original_negativity(self, prompt: str) -> float:
-        if prompt not in self.precomputed_prompt_negativities:
-            negativity = self.sentiment_classifier.evaluate_texts([prompt], return_probs=True)[0][
-                NEGATIVE
-            ].item()
-            self.precomputed_prompt_negativities[prompt] = round(negativity, 2)
-        return self.precomputed_prompt_negativities[prompt]
+    def get_prompt_original_target_label_prob(self, prompt: str) -> float:
+        if prompt not in self.precomputed_prompt_target_label_probs:
+            original_target_label_prob = self.sentiment_classifier.evaluate_texts(
+                [prompt], return_probs=True
+            )[0][self.target_label].item()
+            self.precomputed_prompt_target_label_probs[prompt] = round(
+                original_target_label_prob, 2
+            )
+        return self.precomputed_prompt_target_label_probs[prompt]
 
     @staticmethod
     def get_sentence_length_difference_penalties(
@@ -123,14 +130,14 @@ class NegativizerMetricCalculator(RewardCalculator):
         ).tolist()
         return round_list(final_scores)
 
-    def get_negativity(self, generations: list[str]) -> list[float]:
-        negativity_scores = [
+    def get_target_label_prob(self, generations: list[str]) -> list[float]:
+        target_label_probs = [
             float(score.item())
             for score in self.sentiment_classifier.evaluate_texts(generations, return_probs=True)[
-                :, NEGATIVE
+                :, self.target_label
             ]
         ]
-        return round_list(negativity_scores)
+        return round_list(target_label_probs)
 
     def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
@@ -171,26 +178,26 @@ class NegativizerMetricCalculator(RewardCalculator):
             entailment_calculation = executor.submit(
                 partial(self.get_entailment, prompt=prompt, generations=generations)
             )
-            negativity_calculation = executor.submit(
-                partial(self.get_negativity, generations=generations)
+            target_label_prob_calculation = executor.submit(
+                partial(self.get_target_label_prob, generations=generations)
             )
             gan_naturalness_calculation = executor.submit(
                 partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
             )
-            prompt_negativity_calculation = executor.submit(
-                partial(self.get_prompt_original_negativity, prompt=prompt)
+            prompt_target_label_prob_calculation = executor.submit(
+                partial(self.get_prompt_original_target_label_prob, prompt=prompt)
             )
 
-        prompt_negativity = prompt_negativity_calculation.result()
-        negativity_scores = negativity_calculation.result()
-        negativity_gains = [
-            negativity_score - prompt_negativity for negativity_score in negativity_scores
+        prompt_target_label_prob = prompt_target_label_prob_calculation.result()
+        target_label_probs = target_label_prob_calculation.result()
+        target_label_prob_gains = [
+            target_label_prob - prompt_target_label_prob for target_label_prob in target_label_probs
         ]
         entailment_scores = entailment_calculation.result()
         gan_naturalness_scores, discriminator_accuracy = gan_naturalness_calculation.result()
 
         rewards = self.calculate_rewards(
-            entailment_scores, negativity_gains, gan_naturalness_scores
+            entailment_scores, target_label_prob_gains, gan_naturalness_scores
         )
 
         prompts_equal_generation = [
@@ -200,23 +207,23 @@ class NegativizerMetricCalculator(RewardCalculator):
         stats = [
             {
                 ENTAILMENT: entailment_score,
-                NEGATIVITY: negativity_score,
+                TARGET_LABEL_PROB: target_label_prob,
                 NATURALNESS: gan_naturalness_score,
                 "prompt_equals_generation": prompt_equals_generation,
                 REWARD: reward,
                 GAN_ACCURACY: discriminator_accuracy,
-                "prompt_negativity": prompt_negativity,
-                "negativity_gain": round(negativity_score - prompt_negativity, 2),
+                "prompt_target_label_prob": prompt_target_label_prob,
+                "target_label_prob_gain": round(target_label_prob - prompt_target_label_prob, 2),
             }
             for (
                 entailment_score,
-                negativity_score,
+                target_label_prob,
                 gan_naturalness_score,
                 prompt_equals_generation,
                 reward,
             ) in zip(
                 entailment_scores,
-                negativity_scores,
+                target_label_probs,
                 gan_naturalness_scores,
                 prompts_equal_generation,
                 rewards,
@@ -227,13 +234,13 @@ class NegativizerMetricCalculator(RewardCalculator):
     def get_metric_names(self) -> list[str]:
         return [
             ENTAILMENT,
-            NEGATIVITY,
+            TARGET_LABEL_PROB,
             NATURALNESS,
             GAN_ACCURACY,
             REWARD,
             "prompt_equals_generation",
-            "negativity_gain",
-            "prompt_negativity",
+            "target_label_prob_gain",
+            "prompt_target_label_prob",
         ]
 
     def train(self) -> None:
@@ -249,6 +256,7 @@ def main(
     source_model_name: str,
     train_split_path: Path,
     eval_split_path: Path,
+    target_label_name: str,
     max_len: int,
     batch_size: int,
     n_epochs: int,
@@ -264,6 +272,12 @@ def main(
     source_model_weights_path: Path | None = None,
     gan_discriminator_weights_path: Path | None = None,
 ):
+    if target_label_name == "positive":
+        target_label = POSITIVE
+    elif target_label_name == "negative":
+        target_label = NEGATIVE
+    else:
+        raise ValueError(f"Unexpected target label {target_label_name}")
     generator_device, reference_model_device, evaluator_models_device = assign_gpu_devices()
 
     trained_model = GenerativeBart(
@@ -279,11 +293,12 @@ def main(
         evaluator_models_device, max_len, gan_lr, gan_discriminator_weights_path
     )
 
+    opposite_label = 1-target_label
     train_dataset = SST2Dataset(
-        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
+        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=opposite_label
     )
     eval_dataset = SST2Dataset(
-        eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=POSITIVE
+        eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=opposite_label
     )
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -299,25 +314,20 @@ def main(
     run_subdir_name.mkdir(parents=True, exist_ok=True)
     general_training_log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    negativizer_optimizer = AdamW(trained_model.parameters(), lr=0)
+    unidirectional_optimizer = AdamW(trained_model.parameters(), lr=0)
 
-    # Weighted loss to balance the fact that in training batches there are two generations
-    # for one sampled sentence. This will stop working if GAN_GENERATED_LABEL is not 1.
-    gan_loss = nn.CrossEntropyLoss(
-        reduction="mean", weight=torch.FloatTensor([2, 1]).to(gan_discriminator.device)
-    )
-    metric_calculator = NegativizerMetricCalculator(
+    metric_calculator = UnidirectionalMetricCalculator(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
         gan_discriminator=gan_discriminator,
-        gan_loss=gan_loss,
         gan_weight_decay=gan_weight_decay,
+        target_label=target_label,
     )
 
     dpo_trainer = DPOTrainer(
         trained_model=trained_model,
         metric_calculator=metric_calculator,
-        trained_model_optimizer=negativizer_optimizer,
+        trained_model_optimizer=unidirectional_optimizer,
         beta=beta,
         temperature=temperature,
         attacker_lr=attacker_lr,
@@ -350,7 +360,7 @@ def main(
 
 if __name__ == "__main__":
     train_params = yaml.safe_load(open("params.yaml"))[
-        "src.experimental_generators.negativizer.train_dpo"
+        "src.experimental_generators.unidirectional.train_dpo"
     ]
 
     source_model_name = train_params["source_model_name"]
@@ -368,6 +378,7 @@ if __name__ == "__main__":
     train_split_path = Path(train_params["train_split_path"])
     eval_split_path = Path(train_params["eval_split_path"])
 
+    target_label_name = train_params["target_label_name"]
     max_len = int(train_params["max_len"])
     batch_size = int(train_params["batch_size"])
     n_epochs = int(train_params["n_epochs"])
@@ -385,6 +396,7 @@ if __name__ == "__main__":
         source_model_name,
         train_split_path,
         eval_split_path,
+        target_label_name,
         max_len,
         batch_size,
         n_epochs,

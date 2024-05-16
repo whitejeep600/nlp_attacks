@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Metrics
 ENTAILMENT = "entailment_score"
-NEGATIVITY = "negativity_score"
+TARGET_LABEL_PROB = "target_label_prob"
 NATURALNESS = "gan_naturalness_score"
 GRAMMATICALITY = "grammaticality_score"
 GAN_ACCURACY = "gan_discriminator_accuracy"

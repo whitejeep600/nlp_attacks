@@ -28,12 +28,13 @@ src.echo.train_dpo:
   n_max_train_samples: 1024
   general_training_log_path: runs/echo/log.txt
 
-src.experimental_generators.negativizer.train_dpo:
+src.experimental_generators.unidirectional.train_dpo:
   source_model_name: eugenesiow/bart-paraphrase
   source_model_weights_path: null
   gan_discriminator_weights_path: null
   train_split_path: data/sst2/train.csv
   eval_split_path: data/sst2/validation.csv
+  target_label_name: negative
   max_len: 16
   batch_size: 1
   n_epochs: 4
@@ -42,6 +43,6 @@ src.experimental_generators.negativizer.train_dpo:
   beta: 0.1
   temperature: 1
   gan_weight_decay: 5e-07
-  save_dir: runs/negativizer/
+  save_dir: runs/unidirectional/
   n_max_train_samples: 1024
-  general_training_log_path: runs/negativizer/log.txt
+  general_training_log_path: runs/unidirectional/log.txt
