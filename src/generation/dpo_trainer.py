@@ -298,7 +298,7 @@ class DPOTrainer(Trainer):
         if generations_equal_ratio < 0.1:
             new_temperature = 1 + (self.temperature - 1) * 0.9
         else:
-            new_temperature = min(self.temperature + 0.1, 1.6)
+            new_temperature = min(self.temperature + 0.1, 2)
         self.temperature = new_temperature
 
     def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
