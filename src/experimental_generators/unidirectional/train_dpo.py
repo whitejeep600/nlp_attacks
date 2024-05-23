@@ -53,6 +53,13 @@ def get_limit(n: float) -> float:
         return 0.5
 
 
+def get_label_prob_gain_based_reward(prob_gain: float) -> float:
+    if prob_gain < 0:
+        return 0.2 + prob_gain * 0.2
+    else:
+        return 0.2 + prob_gain * 0.8
+
+
 class UnidirectionalMetricCalculator(RewardCalculator):
     def __init__(
         self,
@@ -88,10 +95,12 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         for i in range(len(gan_naturalness_scores)):
             gan_naturalness_score = gan_naturalness_scores[i]
             entailment_score = entailment_scores[i] + 0.01
-            target_label_prob_gain = 0.5 + target_label_prob_gains[i] / 2  # in [0, 1]
+            prob_gain_based_reward_score = get_label_prob_gain_based_reward(
+                target_label_prob_gains[i]
+            )
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
-            from_other_goals = harmonic_mean([entailment_score, target_label_prob_gain])
+            from_other_goals = harmonic_mean([entailment_score, prob_gain_based_reward_score])
             reward = round(base + limit * from_other_goals, 3)
             rewards.append(reward)
         return rewards
@@ -293,9 +302,13 @@ def main(
         evaluator_models_device, max_len, gan_lr, gan_discriminator_weights_path
     )
 
-    opposite_label = 1-target_label
+    opposite_label = 1 - target_label
     train_dataset = SST2Dataset(
-        train_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=opposite_label
+        train_split_path,
+        trained_model.tokenizer,
+        max_len,
+        min_length=8,
+        filter_label=opposite_label,
     )
     eval_dataset = SST2Dataset(
         eval_split_path, trained_model.tokenizer, max_len, min_length=8, filter_label=opposite_label
