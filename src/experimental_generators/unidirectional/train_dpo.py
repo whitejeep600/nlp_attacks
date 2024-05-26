@@ -54,10 +54,11 @@ def get_limit(n: float) -> float:
 
 
 def get_label_prob_gain_based_reward(prob_gain: float) -> float:
+    knee = 0.1
     if prob_gain < 0:
-        return 0.2 + prob_gain * 0.2
+        return knee + prob_gain * knee
     else:
-        return 0.2 + prob_gain * 0.8
+        return knee + prob_gain * (1 - knee)
 
 
 class UnidirectionalMetricCalculator(RewardCalculator):
@@ -148,7 +149,9 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         ]
         return round_list(target_label_probs)
 
-    def get_gan_naturalness(self, prompt: str, generations: list[str]) -> tuple[list[float], float]:
+    def get_gan_naturalness(
+        self, prompt: str, generations: list[str], epoch_no: int = -1
+    ) -> tuple[list[float], float]:
         all_sentences = generations + [prompt]
         all_labels = torch.LongTensor(
             [GAN_GENERATED_LABEL for _ in generations] + [1 - GAN_GENERATED_LABEL]
@@ -169,7 +172,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
             2 * torch.softmax(gan_logits, dim=1)[:, 1 - GAN_GENERATED_LABEL][:-1]
         ).tolist()
 
-        if self.mode == TRAIN:
+        if self.mode == TRAIN and epoch_no != -1 and epoch_no < 10:
             gan_weight_norm_sum = self.gan_discriminator.weight_norm_sum()
             loss = (
                 self.gan_loss(gan_logits, all_labels) + self.gan_weight_decay * gan_weight_norm_sum
@@ -181,7 +184,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
     def get_rewards_and_metrics(
-        self, prompt: str, generations: list[str]
+        self, prompt: str, generations: list[str], epoch_no: int = -1
     ) -> tuple[list[float], list[dict[str, float]]]:
         with ThreadPoolExecutor(max_workers=4) as executor:
             entailment_calculation = executor.submit(
@@ -191,7 +194,12 @@ class UnidirectionalMetricCalculator(RewardCalculator):
                 partial(self.get_target_label_prob, generations=generations)
             )
             gan_naturalness_calculation = executor.submit(
-                partial(self.get_gan_naturalness, prompt=prompt, generations=generations)
+                partial(
+                    self.get_gan_naturalness,
+                    prompt=prompt,
+                    generations=generations,
+                    epoch_no=epoch_no,
+                )
             )
             prompt_target_label_prob_calculation = executor.submit(
                 partial(self.get_prompt_original_target_label_prob, prompt=prompt)
