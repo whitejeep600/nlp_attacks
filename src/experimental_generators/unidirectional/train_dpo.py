@@ -19,6 +19,7 @@ from src.constants import (
     EVAL,
     GAN_ACCURACY,
     GAN_GENERATED_LABEL,
+    ID,
     NATURALNESS,
     NEGATIVE,
     POSITIVE,
@@ -54,7 +55,7 @@ def get_limit(n: float) -> float:
 
 
 def get_label_prob_gain_based_reward(prob_gain: float) -> float:
-    knee = 0.1
+    knee = 0.15
     if prob_gain < 0:
         return knee + prob_gain * knee
     else:
@@ -66,6 +67,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         self,
         entailment_classifier: EntailmentEvaluator,
         sentiment_classifier: SentimentClassifier,
+        better_sentiment_classifier: SentimentClassifier,
         gan_discriminator: GANDiscriminator,
         gan_weight_decay: float,
         target_label: int,
@@ -73,6 +75,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         super().__init__()
         self.entailment_classifier = entailment_classifier
         self.sentiment_classifier = sentiment_classifier
+        self.better_sentiment_classifier = better_sentiment_classifier
         self.gan_discriminator = gan_discriminator
         self.precomputed_prompt_target_label_probs: dict[str, float] = {}
         self.mode = TRAIN
@@ -149,6 +152,15 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         ]
         return round_list(target_label_probs)
 
+    def get_judge_target_label_prob(self, generations: list[str]) -> list[float]:
+        target_label_probs = [
+            float(score.item())
+            for score in self.better_sentiment_classifier.evaluate_texts(
+                generations, return_probs=True
+            )[:, self.target_label]
+        ]
+        return round_list(target_label_probs)
+
     def get_gan_naturalness(
         self, prompt: str, generations: list[str], epoch_no: int = -1
     ) -> tuple[list[float], float]:
@@ -184,14 +196,18 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
     def get_rewards_and_metrics(
-        self, prompt: str, generations: list[str], epoch_no: int = -1
+        self, prompt: str, generations: list[str], epoch_no: int = -1, ids: list[int] | None = None
     ) -> tuple[list[float], list[dict[str, float]]]:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        assert ids is not None
+        with ThreadPoolExecutor(max_workers=5) as executor:
             entailment_calculation = executor.submit(
                 partial(self.get_entailment, prompt=prompt, generations=generations)
             )
             target_label_prob_calculation = executor.submit(
                 partial(self.get_target_label_prob, generations=generations)
+            )
+            judge_target_label_prob_calculation = executor.submit(
+                partial(self.get_judge_target_label_prob, generations=generations)
             )
             gan_naturalness_calculation = executor.submit(
                 partial(
@@ -207,6 +223,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
 
         prompt_target_label_prob = prompt_target_label_prob_calculation.result()
         target_label_probs = target_label_prob_calculation.result()
+        judge_target_label_probs = judge_target_label_prob_calculation.result()
         target_label_prob_gains = [
             target_label_prob - prompt_target_label_prob for target_label_prob in target_label_probs
         ]
@@ -225,25 +242,31 @@ class UnidirectionalMetricCalculator(RewardCalculator):
             {
                 ENTAILMENT: entailment_score,
                 TARGET_LABEL_PROB: target_label_prob,
+                "judge_target_label_prob": judge_target_label_prob,
                 NATURALNESS: gan_naturalness_score,
                 "prompt_equals_generation": prompt_equals_generation,
                 REWARD: reward,
                 GAN_ACCURACY: discriminator_accuracy,
                 "prompt_target_label_prob": prompt_target_label_prob,
                 "target_label_prob_gain": round(target_label_prob - prompt_target_label_prob, 2),
+                ID: sample_id,
             }
             for (
                 entailment_score,
                 target_label_prob,
+                judge_target_label_prob,
                 gan_naturalness_score,
                 prompt_equals_generation,
                 reward,
+                sample_id,
             ) in zip(
                 entailment_scores,
                 target_label_probs,
+                judge_target_label_probs,
                 gan_naturalness_scores,
                 prompts_equal_generation,
                 rewards,
+                ids,
             )
         ]
         return rewards, stats
@@ -258,6 +281,8 @@ class UnidirectionalMetricCalculator(RewardCalculator):
             "prompt_equals_generation",
             "target_label_prob_gain",
             "prompt_target_label_prob",
+            "judge_target_label_prob",
+            ID,
         ]
 
     def train(self) -> None:
@@ -306,6 +331,9 @@ def main(
 
     entailment_classifier = EntailmentEvaluator(evaluator_models_device)
     sentiment_classifier = SentimentClassifier(evaluator_models_device, raw_name="cnn-sst2")
+    better_sentiment_classifier = SentimentClassifier(
+        evaluator_models_device, raw_name="bert-base-uncased-sst2"
+    )
     gan_discriminator = GANDiscriminator(
         evaluator_models_device, max_len, gan_lr, gan_discriminator_weights_path
     )
@@ -340,6 +368,7 @@ def main(
     metric_calculator = UnidirectionalMetricCalculator(
         entailment_classifier=entailment_classifier,
         sentiment_classifier=sentiment_classifier,
+        better_sentiment_classifier=better_sentiment_classifier,
         gan_discriminator=gan_discriminator,
         gan_weight_decay=gan_weight_decay,
         target_label=target_label,

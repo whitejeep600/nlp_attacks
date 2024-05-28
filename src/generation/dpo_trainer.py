@@ -13,7 +13,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.constants import EVAL, GENERATIONS_EQUAL, MODES, POLICY_LOSS, TRAIN
+from src.constants import EVAL, GENERATIONS_EQUAL, ID, MODES, POLICY_LOSS, TRAIN
 from src.generation.base_trainer import Trainer
 from src.generation.generative_bart import GenerativeBart
 from src.utils import get_length_without_padding, sequence_logprob
@@ -51,7 +51,7 @@ class RewardCalculator:
         pass
 
     def get_rewards_and_metrics(
-        self, prompt: str, generations: list[str], epoch_no: int = -1
+        self, prompt: str, generations: list[str], epoch_no: int = -1, ids: list[int] | None = None
     ) -> tuple[list[float], list[dict[str, float]]]:
         raise NotImplementedError
 
@@ -208,9 +208,7 @@ class DPOTrainer(Trainer):
         return truncated_decoded_id_single_tensors, truncated_probs, truncated_reference_probs
 
     def sample_two_generations_per_sample(
-        self,
-        batch_input_ids: torch.Tensor,
-        batch_original_seqs: list[str],
+        self, batch_input_ids: torch.Tensor, batch_original_seqs: list[str], sample_ids: list[int]
     ) -> list[SampleGenerations]:
         """
 
@@ -237,7 +235,7 @@ class DPOTrainer(Trainer):
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
             rewards, metrics = self.metric_calculator.get_rewards_and_metrics(
-                sample_original_seq, [text_0, text_1], self.epochs_elapsed
+                sample_original_seq, [text_0, text_1], self.epochs_elapsed, ids=sample_ids
             )
             generations = SampleGenerations(
                 prompt=sample_original_seq,
@@ -312,7 +310,7 @@ class DPOTrainer(Trainer):
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / filename)
 
     def save_epoch_generations_and_metrics(
-        self, all_batch_generations: list[list[SampleGenerations]]
+        self, all_batch_generations: list[list[SampleGenerations]], mode: str = EVAL
     ) -> None:
         flattened_generations = [
             sample_generation
@@ -330,7 +328,7 @@ class DPOTrainer(Trainer):
                 generation_info.update(sample_generations.generation_metrics[i])
                 all_generation_info_dicts.append(generation_info)
         df_to_save = pd.DataFrame.from_records(all_generation_info_dicts)
-        generated_sentences_path = self.save_dir / "generated_sentences"
+        generated_sentences_path = self.save_dir / f"generated_sentences_{mode}"
         generated_sentences_path.mkdir(parents=True, exist_ok=True)
         current_save_path = generated_sentences_path / f"epoch_{self.epochs_elapsed}.csv"
         df_to_save.to_csv(current_save_path, index=False)
@@ -364,8 +362,11 @@ class DPOTrainer(Trainer):
             position=1,
         ):
             input_ids = batch["input_ids"].to(self.trained_model.device)
+            sample_ids = batch[ID]
             original_seqs = batch["original_seq"]
-            generations = self.sample_two_generations_per_sample(input_ids, original_seqs)
+            generations = self.sample_two_generations_per_sample(
+                input_ids, original_seqs, sample_ids
+            )
             all_epoch_batch_generations.append(generations)
 
             policy_loss = self.get_batch_policy_loss(generations)
@@ -425,8 +426,8 @@ class DPOTrainer(Trainer):
             batch_nonstandard_metrics,
             mode,
         )
+        self.save_epoch_generations_and_metrics(all_epoch_batch_generations, mode=mode)
         if mode == EVAL:
-            self.save_epoch_generations_and_metrics(all_epoch_batch_generations)
             self.temperatures.append(self.temperature)
             self.adjust_temperature(float(mean(generations_equal_ratio)))
 
