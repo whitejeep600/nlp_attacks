@@ -131,7 +131,6 @@ class DPOTrainer(Trainer):
         self.trained_model.train()
         self.reference_model.eval()  # sic!
         self.metric_calculator.train()
-        self.batch_gradients_accumulated = 0
 
     def eval(self) -> None:
         self.trained_model.eval()
@@ -306,12 +305,14 @@ class DPOTrainer(Trainer):
             new_temperature = min(self.temperature + 0.1, 2)
         self.temperature = new_temperature
 
-    def policy_loss_step(self, policy_loss: torch.Tensor, high_reward_difference: bool = True):
+    def policy_loss_step(self, policy_loss: torch.Tensor):
         self.update_learning_rate()
         policy_loss.backward()
-        if high_reward_difference:
+        self.batch_gradients_accumulated += 1
+        if self.batch_gradients_accumulated == self.gradient_accumulation_batches:
             self.trained_model_optimizer.step()
-        self.trained_model_optimizer.zero_grad()
+            self.trained_model_optimizer.zero_grad()
+            self.batch_gradients_accumulated = 0
 
     def save_trained_model(self, filename: str = "generator_ckpt.pt") -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / filename)
@@ -374,15 +375,15 @@ class DPOTrainer(Trainer):
             all_epoch_batch_generations.append(generations)
 
             policy_loss = self.get_batch_policy_loss(generations)
-            epoch_policy_losses.append(policy_loss.item())
-            high_reward_difference = all(
+            if mode == TRAIN and all(
                 [
                     sample_generations.have_high_reward_difference()
                     for sample_generations in generations
                 ]
-            )
-            if mode == TRAIN:
-                self.policy_loss_step(policy_loss, high_reward_difference)
+            ):
+                self.policy_loss_step(policy_loss)
+
+            epoch_policy_losses.append(policy_loss.item())
 
             if batch_no == n_max_batches:
                 break
