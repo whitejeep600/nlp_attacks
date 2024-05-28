@@ -125,7 +125,6 @@ class DPOTrainer(Trainer):
         self.trained_model_lr_scheduler = WarmupScheduler(0, attacker_lr, 128)
         self.gradient_accumulation_batches = gradient_accumulation_batches
         self.temperatures: list[float] = []
-        self.batch_gradients_accumulated = 0
 
     def train(self) -> None:
         self.trained_model.train()
@@ -305,14 +304,12 @@ class DPOTrainer(Trainer):
             new_temperature = min(self.temperature + 0.1, 2)
         self.temperature = new_temperature
 
-    def policy_loss_step(self, policy_loss: torch.Tensor):
+    def policy_loss_step(self, policy_loss: torch.Tensor, batch_no: int):
         self.update_learning_rate()
         policy_loss.backward()
-        self.batch_gradients_accumulated += 1
-        if self.batch_gradients_accumulated == self.gradient_accumulation_batches:
+        if batch_no % self.gradient_accumulation_batches == self.gradient_accumulation_batches - 1:
             self.trained_model_optimizer.step()
             self.trained_model_optimizer.zero_grad()
-            self.batch_gradients_accumulated = 0
 
     def save_trained_model(self, filename: str = "generator_ckpt.pt") -> None:
         torch.save(self.trained_model.bert.state_dict(), self.save_dir / filename)
@@ -381,7 +378,7 @@ class DPOTrainer(Trainer):
                     for sample_generations in generations
                 ]
             ):
-                self.policy_loss_step(policy_loss)
+                self.policy_loss_step(policy_loss, batch_no)
 
             epoch_policy_losses.append(policy_loss.item())
 
