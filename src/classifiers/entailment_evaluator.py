@@ -10,7 +10,7 @@ class EntailmentEvaluator(Classifier):
     def __init__(self, device: torch.device):
         super().__init__()
 
-        raw_name = "bert-base-uncased-snli"
+        raw_name = "distilbert-base-cased-snli"
         textattack_model_name = HUGGINGFACE_MODELS[raw_name]
         model = transformers.AutoModelForSequenceClassification.from_pretrained(
             textattack_model_name
@@ -23,9 +23,9 @@ class EntailmentEvaluator(Classifier):
         self.model.to(device)
         self.model.model.eval()
 
-        self.contradiction_code = 0
-        self.entailment_code = 1
-        self.neutral_code = 2
+        self.contradiction_code = 2
+        self.entailment_code = 0
+        self.neutral_code = 1
 
     def evaluate_text_pairs(self, texts: list[tuple[str, str]], return_probs=False) -> torch.Tensor:
         prepared_inputs = [
