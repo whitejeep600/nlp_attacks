@@ -45,9 +45,6 @@ class SampleGenerations:
         ]
         self.generation_metrics = [generation_metrics[i] for i in ordering]
 
-    def have_high_reward_difference(self) -> bool:
-        return self.rewards[1] - self.rewards[0] > 0.2
-
 
 class RewardCalculator:
     def __init__(self):
@@ -372,12 +369,7 @@ class DPOTrainer(Trainer):
             all_epoch_batch_generations.append(generations)
 
             policy_loss = self.get_batch_policy_loss(generations)
-            if mode == TRAIN and all(
-                [
-                    sample_generations.have_high_reward_difference()
-                    for sample_generations in generations
-                ]
-            ):
+            if mode == TRAIN:
                 self.policy_loss_step(policy_loss, batch_no)
 
             epoch_policy_losses.append(policy_loss.item())
