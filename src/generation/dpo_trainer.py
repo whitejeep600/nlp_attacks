@@ -51,7 +51,7 @@ class RewardCalculator:
         pass
 
     def get_rewards_and_metrics(
-        self, prompt: str, generations: list[str], epoch_no: int = -1, ids: list[int] | None = None
+        self, prompt: str, generations: list[str], epoch_no: int = -1, prompt_id: int | None = None
     ) -> tuple[list[float], list[dict[str, float]]]:
         raise NotImplementedError
 
@@ -235,7 +235,10 @@ class DPOTrainer(Trainer):
             sample_original_seq = batch_original_seqs[batch_index]
             text_0, text_1 = self.trained_model.decode([ids_0, ids_1])
             rewards, metrics = self.metric_calculator.get_rewards_and_metrics(
-                sample_original_seq, [text_0, text_1], self.epochs_elapsed, ids=sample_ids
+                sample_original_seq,
+                [text_0, text_1],
+                self.epochs_elapsed,
+                prompt_id=sample_ids[batch_index],
             )
             generations = SampleGenerations(
                 prompt=sample_original_seq,

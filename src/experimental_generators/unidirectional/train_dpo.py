@@ -196,9 +196,9 @@ class UnidirectionalMetricCalculator(RewardCalculator):
         return round_list(gan_fooling_factors), round(discriminator_accuracy, 3)
 
     def get_rewards_and_metrics(
-        self, prompt: str, generations: list[str], epoch_no: int = -1, ids: list[int] | None = None
+        self, prompt: str, generations: list[str], epoch_no: int = -1, prompt_id: int | None = None
     ) -> tuple[list[float], list[dict[str, float]]]:
-        assert ids is not None
+        assert prompt_id is not None
         with ThreadPoolExecutor(max_workers=5) as executor:
             entailment_calculation = executor.submit(
                 partial(self.get_entailment, prompt=prompt, generations=generations)
@@ -249,7 +249,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
                 GAN_ACCURACY: discriminator_accuracy,
                 "prompt_target_label_prob": prompt_target_label_prob,
                 "target_label_prob_gain": round(target_label_prob - prompt_target_label_prob, 2),
-                ID: sample_id,
+                ID: prompt_id,
             }
             for (
                 entailment_score,
@@ -258,7 +258,6 @@ class UnidirectionalMetricCalculator(RewardCalculator):
                 gan_naturalness_score,
                 prompt_equals_generation,
                 reward,
-                sample_id,
             ) in zip(
                 entailment_scores,
                 target_label_probs,
@@ -266,7 +265,6 @@ class UnidirectionalMetricCalculator(RewardCalculator):
                 gan_naturalness_scores,
                 prompts_equal_generation,
                 rewards,
-                ids,
             )
         ]
         return rewards, stats
