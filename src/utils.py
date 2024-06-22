@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 
 
 def sequence_logprob(token_probabilities: torch.Tensor) -> torch.Tensor:
@@ -103,3 +104,41 @@ def assign_gpu_devices() -> tuple[torch.device, torch.device, torch.device]:
         evaluator_models_device = devices[0]
         reference_model_device = devices[0]
     return generator_device, reference_model_device, evaluator_models_device
+
+
+GAN_THRESHOLD = 0.6
+BASE_AT_GAN_THRESHOLD = 0.48
+LIMIT_AT_GAN_THRESHOLD = 0.5
+BASE_AT_1 = 0.5
+LIMIT_AT_1 = 1
+
+
+def get_base(naturalness: float) -> float:
+    if naturalness < GAN_THRESHOLD:
+        return BASE_AT_GAN_THRESHOLD * (naturalness / GAN_THRESHOLD)
+    elif naturalness < 1:
+        return BASE_AT_GAN_THRESHOLD + (BASE_AT_1 - BASE_AT_GAN_THRESHOLD) * (
+            naturalness - GAN_THRESHOLD
+        ) / (1 - GAN_THRESHOLD)
+    else:
+        return BASE_AT_1
+
+
+def get_limit(naturalness: float) -> float:
+    if naturalness < GAN_THRESHOLD:
+        return LIMIT_AT_GAN_THRESHOLD * (naturalness / GAN_THRESHOLD)
+    elif naturalness < 1:
+        return LIMIT_AT_GAN_THRESHOLD + (LIMIT_AT_1 - LIMIT_AT_GAN_THRESHOLD) * (
+            naturalness - GAN_THRESHOLD
+        ) / (1 - GAN_THRESHOLD)
+    else:
+        return LIMIT_AT_1
+
+
+def plot_reward_base_and_limit() -> None:
+    xs = np.linspace(0, 2, 100)
+    limits = [get_limit(x) for x in xs]
+    bases = [get_base(x) for x in xs]
+    plt.plot(xs, limits)
+    plt.plot(xs, bases)
+    plt.show()
