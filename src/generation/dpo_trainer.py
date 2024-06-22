@@ -366,7 +366,7 @@ class DPOTrainer(Trainer):
         ):
             input_ids = batch["input_ids"].to(self.trained_model.device)
             sample_ids = batch[ID]
-            original_seqs = batch["original_seq"]
+            original_seqs = batch["original_seq"].tolist()
             generations = self.sample_two_generations_per_sample(
                 input_ids, original_seqs, sample_ids
             )

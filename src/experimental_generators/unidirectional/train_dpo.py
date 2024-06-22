@@ -31,27 +31,14 @@ from src.datasets.sst2_dataset import SST2Dataset
 from src.gan.gan_discriminator import GANDiscriminator
 from src.generation.dpo_trainer import DPOTrainer, RewardCalculator
 from src.generation.generative_bart import GenerativeBart
-from src.utils import assign_gpu_devices, get_next_run_subdir_name, harmonic_mean, round_list
-
-GAN_THRESHOLD = 0.6
-
-
-def get_base(n: float) -> float:
-    if n < GAN_THRESHOLD:
-        return 0.48 * (n / GAN_THRESHOLD)
-    elif n < 1:
-        return 0.48 + 0.02 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
-    else:
-        return 0.5
-
-
-def get_limit(n: float) -> float:
-    if n < GAN_THRESHOLD:
-        return 0.1 * (n / GAN_THRESHOLD)
-    elif n < 1:
-        return 0.1 + 0.4 * (n - GAN_THRESHOLD) / (1 - GAN_THRESHOLD)
-    else:
-        return 0.5
+from src.utils import (
+    assign_gpu_devices,
+    get_base,
+    get_limit,
+    get_next_run_subdir_name,
+    harmonic_mean,
+    round_list,
+)
 
 
 def get_label_prob_gain_based_reward(prob_gain: float) -> float:
@@ -105,7 +92,7 @@ class UnidirectionalMetricCalculator(RewardCalculator):
             base = get_base(gan_naturalness_score)
             limit = get_limit(gan_naturalness_score)
             from_other_goals = harmonic_mean([entailment_score, prob_gain_based_reward_score])
-            reward = round(base + limit * from_other_goals, 3)
+            reward = round(base + (limit - base) * from_other_goals, 4)
             rewards.append(reward)
         return rewards
 
