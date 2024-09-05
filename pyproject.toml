@@ -30,7 +30,6 @@ priority = "primary"
 
 [tool.poetry.dependencies]
 python = "~3.9"
-torch = { version = "2.1.1+cpu", source = "torchcpu" }
 
 black = "*"
 flake8 = "*"
@@ -38,6 +37,7 @@ isort = "*"
 mypy = "*"
 pandas = "*"
 pyyaml = "*"
+torch = "2.1.1"
 huggingface-hub = "0.19.4"
 transformers = "4.38"
 datasets = "2.18"
